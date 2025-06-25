@@ -1,6 +1,4 @@
-
 <?php
-
 namespace App\Jobs;
 
 use App\Models\{Course, Page, Quiz, QuizItem};
