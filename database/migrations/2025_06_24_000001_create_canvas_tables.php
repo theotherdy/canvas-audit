@@ -9,8 +9,10 @@ return new class extends Migration {
     public function up(): void
     {
         Schema::create('courses', function (Blueprint $t) {
-            $t->id(); $t->unsignedBigInteger('canvas_id')->unique();
-            $t->string('name'); $t->unsignedInteger('students')->default(0);
+            $t->id(); 
+            $t->unsignedBigInteger('canvas_id')->unique();
+            $t->string('name'); 
+            $t->unsignedInteger('students')->default(0);
             $t->timestamps();
         });
 
