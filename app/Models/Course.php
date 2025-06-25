@@ -14,6 +14,6 @@ class Course extends Model
     ];
 
     /* ---- Relationships ---- */
-    //public function pages()  : HasMany { return $this->hasMany(Page::class);  }
-    //public function quizzes(): HasMany { return $this->hasMany(Quiz::class); }
+    public function pages()  : HasMany { return $this->hasMany(Page::class);  }
+    public function quizzes(): HasMany { return $this->hasMany(Quiz::class); }
 }

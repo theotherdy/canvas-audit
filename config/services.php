@@ -35,4 +35,6 @@ return [
         ],
     ],
 
+    'canvas' => [ 'domain' => env('CANVAS_DOMAIN'), 'token' => env('CANVAS_TOKEN'), ],
+
 ];
