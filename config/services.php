@@ -35,6 +35,9 @@ return [
         ],
     ],
 
-    'canvas' => [ 'domain' => env('CANVAS_DOMAIN'), 'token' => env('CANVAS_TOKEN'), ],
+    'canvas' => [
+        'base_url' => env('CANVAS_BASE_URL', 'https://canvas.ox.ac.uk/api/v1'),
+        'token'    => env('CANVAS_API_TOKEN'),
+    ],
 
 ];
