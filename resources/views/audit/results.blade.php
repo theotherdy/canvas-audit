@@ -6,7 +6,7 @@
 
     @if ($hasErrors)
         <div class="alert alert-warning">
-            Some courses returned errors – see the “Error” column.
+            Some courses returned errors – see the "Error" column.
         </div>
     @endif
 
@@ -24,6 +24,7 @@
                     <th>Quiz Eng.</th>
                     <th>Assign Eng.</th>
                     <th>Disc. Eng.</th>
+                    <th>Duration</th>
                     <th>Error</th>
                 </tr>
             </thead>
@@ -40,8 +41,11 @@
                         <td>{{ num($r->quiz_engagement) }}</td>
                         <td>{{ num($r->assignment_engagement) }}</td>
                         <td>{{ num($r->discussion_engagement) }}</td>
+                        <td>{{ isset($r->audit_duration) ? $r->audit_duration . 's' : '—' }}</td>
                         <td class="text-wrap" style="max-width:15rem;">
-                            {{ $r->error ?? '' }}
+                            @if(isset($r->error))
+                                <small class="text-danger">{{ $r->error }}</small>
+                            @endif
                         </td>
                     </tr>
                 @endforeach
@@ -49,7 +53,10 @@
         </table>
     </div>
 
-    <a href="{{ route('audit.home') }}" class="btn btn-secondary mt-3">Back</a>
+    <div class="mt-3">
+        <a href="{{ route('audit.home') }}" class="btn btn-secondary">Back</a>
+        <a href="{{ route('debug.index') }}" class="btn btn-outline-info">Debug Tools</a>
+    </div>
 </div>
 @endsection
 
