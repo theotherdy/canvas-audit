@@ -1,38 +1,25 @@
-{{-- resources/views/audit/home.blade.php --}}
 @extends('layouts.app')
 
 @section('content')
 <div class="container mt-4">
-    <h1 class="h3 mb-4">Canvas Course Audit</h1>
+    <h1 class="h4 mb-4">Canvas Course Audit (synchronous)</h1>
 
-    {{-- validation errors --}}
     @if ($errors->any())
         <div class="alert alert-danger">
-            @foreach ($errors->all() as $error)
-                <div>{{ $error }}</div>
-            @endforeach
+            {{ $errors->first() }}
         </div>
     @endif
 
-    <form action="{{ route('audit.store') }}" method="POST">
+    <form action="{{ route('audit.run') }}" method="POST">
         @csrf
-
         <div class="mb-3">
             <label for="course_ids" class="form-label">
-                Course IDs <small class="text-muted">(comma or space-separated)</small>
+                Course IDs (comma or space separated)
             </label>
-            <textarea
-                name="course_ids"
-                id="course_ids"
-                rows="4"
-                class="form-control"
-                placeholder="12345 67890 112233"
-            >{{ old('course_ids') }}</textarea>
+            <textarea id="course_ids" name="course_ids" rows="4"
+                      class="form-control">{{ old('course_ids') }}</textarea>
         </div>
-
-        <button type="submit" class="btn btn-primary">
-            Start audit
-        </button>
+        <button class="btn btn-primary">Start audit</button>
     </form>
 </div>
 @endsection

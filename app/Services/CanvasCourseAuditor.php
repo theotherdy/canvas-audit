@@ -2,22 +2,25 @@
 
 namespace App\Services;
 
-use App\Models\AuditCourseResult;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Fetches counts + engagement ratios for ONE Canvas course
+ * and returns them as a simple DTO (stdClass).
+ *
+ * ─────────────── Usage ───────────────
+ * $auditor  = app(CanvasCourseAuditor::class);
+ * $result   = $auditor->run($courseId);
+ * echo $result->published_pages;
+ */
 class CanvasCourseAuditor
 {
-    /**
-     * Base URL *without* trailing slash, e.g. https://canvas.example.edu/api/v1
-     */
-    protected string $baseUrl;
-
-    /**
-     * Canvas API token.
-     */
-    protected string $token;
+    protected string $baseUrl;   // e.g. https://canvas.example.edu/api/v1
+    protected string $token;     // Canvas API token
 
     public function __construct()
     {
@@ -25,217 +28,164 @@ class CanvasCourseAuditor
         $this->token   = config('services.canvas.token');
     }
 
-    // ───────────────────────────── Public entry point ────────────────────────────
-
-    /**
-     * Run a full audit for a single course.
-     *
-     * @param  int         $courseId  Canvas course id
-     * @param  int|null    $batchId   AuditBatch id (optional)
-     * @return AuditCourseResult
-     */
-    public function handle(int $courseId, ?int $batchId = null): AuditCourseResult
+    /* -------------------------------------------------------------------------
+     | Public entry point
+     *------------------------------------------------------------------------ */
+    public function run(int $courseId): \stdClass
     {
-        // Basic counts ───────────────────────────────────────────────────────────
-        $activeStudents   = $this->countActiveStudents($courseId);
-        $publishedPages   = $this->countPublishedPages($courseId);
-        $classicQuizzes   = $this->countClassicQuizzes($courseId);
-        $newQuizzes       = $this->countNewQuizzes($courseId);
-        $otherAssignments = $this->countOtherAssignments($courseId);
-        $discussions      = $this->countActiveDiscussions($courseId);
+        $active = $this->countActiveStudents($courseId);
+        $pages  = $this->countPublishedPages($courseId);
+        $cq     = $this->countClassicQuizzes($courseId);
+        $nq     = $this->countNewQuizzes($courseId);
+        $other  = $this->countOtherAssignments($courseId);
+        $disc   = $this->countActiveDiscussions($courseId);
 
-        // Engagement ratios ──────────────────────────────────────────────────────
-        $quizEngagement        = $this->quizEngagement($courseId, $activeStudents);
-        $assignmentEngagement  = $this->assignmentEngagement($courseId, $activeStudents);
-        $discussionEngagement  = $this->discussionEngagement($courseId, $activeStudents);
+        $quizEng  = $this->quizEngagement($courseId, $active);
+        $assnEng  = $this->assignmentEngagement($courseId, $active);
+        $discEng  = $this->discussionEngagement($courseId, $active);
 
-        // Persist or update result row ───────────────────────────────────────────
-        return AuditCourseResult::updateOrCreate(
-            ['batch_id' => $batchId, 'course_id' => $courseId],
-            [
-                'published_pages'      => $publishedPages,
-                'classic_quizzes'      => $classicQuizzes,
-                'new_quizzes'          => $newQuizzes,
-                'other_assignments'    => $otherAssignments,
-                'discussions'          => $discussions,
-                'active_students'      => $activeStudents,
-                'quiz_engagement'      => $quizEngagement,
-                'assignment_engagement'=> $assignmentEngagement,
-                'discussion_engagement'=> $discussionEngagement,
-            ]
-        );
+        return (object) [
+            'course_id'             => $courseId,
+            'published_pages'       => $pages,
+            'classic_quizzes'       => $cq,
+            'new_quizzes'           => $nq,
+            'other_assignments'     => $other,
+            'discussions'           => $disc,
+            'active_students'       => $active,
+            'quiz_engagement'       => $quizEng,
+            'assignment_engagement' => $assnEng,
+            'discussion_engagement' => $discEng,
+        ];
     }
 
-    // ─────────────────────────── Low‑level HTTP helpers ──────────────────────────
-
-    /**
-     * Perform a GET request with bearer token and JSON accept header.
-     */
-    private function get(string $uri, array $query = []): Response
-    {
-        return Http::withToken($this->token)
-            ->acceptJson()
-            ->get("{$this->baseUrl}{$uri}", $query);
-    }
-
-    /**
-     * Fetch every page of a Canvas collection, transparently following RFC‑5988
-     * Link headers (rel="next").  Returns one big collection.
-     *
-     * @param  string  $uri   uri relative to /api/v1
-     * @param  array   $query extra query string parameters
-     * @return \Illuminate\Support\Collection
-     */
+    /* -------------------------------------------------------------------------
+     | Low-level helpers
+     *------------------------------------------------------------------------ */
     private function collectPaginated(string $uri, array $query = []): Collection
     {
         $items   = collect();
-        $nextUrl = "{$this->baseUrl}{$uri}";
+        $next    = "{$this->baseUrl}{$uri}";
 
-        while ($nextUrl) {
-            $response = Http::withToken($this->token)
-                ->acceptJson()
-                ->get($nextUrl, $query + ['per_page' => 100])
-                ->throw();
+        while ($next) {
+            $resp = Http::withToken($this->token)
+                        ->acceptJson()
+                        ->get($next, $query + ['per_page' => 100])
+                        ->throw();
 
-            $items   = $items->concat($response->json());
-            $nextUrl = $this->nextLink($response);
-            $query   = []; // subsequent pages already contain query string
+            $items = $items->concat($resp->json());
+            $next  = $this->nextLink($resp);
+            $query = [];           // query already baked into next URL
         }
 
         return $items;
     }
 
-    /**
-     * Extract “next” link from Canvas Link header.
-     *
-     * @return string|null url or null if there is no next page
-     */
-    private function nextLink(Response $response): ?string
+    private function nextLink(Response $r): ?string
     {
-        $header = $response->header('Link');
-        if (!$header) {
+        if (! $link = $r->header('Link')) {
             return null;
         }
-
-        foreach (explode(',', $header) as $part) {
+        foreach (explode(',', $link) as $part) {
             if (str_contains($part, 'rel="next"')) {
                 preg_match('/<([^>]+)>/', $part, $m);
                 return $m[1] ?? null;
             }
         }
-
         return null;
     }
 
-    // ──────────────────────────────── High‑level counts ──────────────────────────
-
-    private function countActiveStudents(int $courseId): int
+    /* -------------------------------------------------------------------------
+     | Count helpers
+     *------------------------------------------------------------------------ */
+    private function countActiveStudents(int $c): int
     {
         return $this->collectPaginated(
-            "/courses/{$courseId}/enrollments",
+            "/courses/{$c}/enrollments",
             ['type[]' => 'StudentEnrollment', 'state[]' => 'active']
-        )->count(); // :contentReference[oaicite:0]{index=0}
+        )->count();
     }
 
-    private function countPublishedPages(int $courseId): int
+    private function countPublishedPages(int $c): int
     {
-        return $this->collectPaginated(
-            "/courses/{$courseId}/pages",
-            ['published' => true]
-        )->count(); // :contentReference[oaicite:1]{index=1}
+        return $this->collectPaginated("/courses/{$c}/pages", ['published' => true])
+                    ->count();
     }
 
-    private function countClassicQuizzes(int $courseId): int
+    private function countClassicQuizzes(int $c): int
     {
-        return $this
-            ->collectPaginated("/courses/{$courseId}/quizzes")
-            ->where('is_quiz_lti', false)
+        return $this->collectPaginated("/courses/{$c}/quizzes")
+                    ->where('is_quiz_lti', false)->count();
+    }
+
+    private function countNewQuizzes(int $c): int
+    {
+        return $this->collectPaginated("/courses/{$c}/quizzes")
+                    ->where('is_quiz_lti', true)->count();
+    }
+
+    private function countOtherAssignments(int $c): int
+    {
+        return $this->collectPaginated("/courses/{$c}/assignments", ['published' => true])
+            ->reject(fn ($a) =>
+                in_array('online_quiz', $a['submission_types'] ?? [], true) ||
+                ($a['quiz_lti'] ?? false)
+            )
             ->count();
     }
 
-    private function countNewQuizzes(int $courseId): int
+    private function countActiveDiscussions(int $c): int
     {
-        return $this
-            ->collectPaginated("/courses/{$courseId}/quizzes")
-            ->where('is_quiz_lti', true)  // New Quiz is an LTI tool
-            ->count();
+        return $this->collectPaginated("/courses/{$c}/discussion_topics",
+                                       ['only_active' => true])->count();
     }
 
-    private function countOtherAssignments(int $courseId): int
+    /* -------------------------------------------------------------------------
+     | Engagement ratios
+     *------------------------------------------------------------------------ */
+    private function ratio(int $num, int $den): float
     {
-        return $this
-            ->collectPaginated("/courses/{$courseId}/assignments", ['published' => true])
-            ->reject(fn ($a) => in_array('online_quiz', $a['submission_types'] ?? [], true)
-                              || ($a['quiz_lti'] ?? false)) // exclude both classic & new quizzes
-            ->count(); // :contentReference[oaicite:2]{index=2}
+        return $den > 0 ? $num / $den : 0.0;
     }
 
-    private function countActiveDiscussions(int $courseId): int
+    private function quizEngagement(int $c, int $active): float
     {
-        return $this
-            ->collectPaginated("/courses/{$courseId}/discussion_topics", ['only_active' => true])
-            ->count();
+        $quizzes = $this->collectPaginated("/courses/{$c}/quizzes");
+        if ($quizzes->isEmpty() || $active === 0) return 0.0;
+
+        $responders = $quizzes->sum(fn ($q) =>
+            $this->collectPaginated("/courses/{$c}/quizzes/{$q['id']}/submissions")
+                 ->pluck('user_id')->unique()->count()
+        );
+        return $this->ratio($responders, $active * $quizzes->count());
     }
 
-    // ───────────────────────────── Engagement calculations ───────────────────────
-
-    /**
-     * Engagement = ∑ unique submitters ÷ (active students × tool count).
-     */
-    private function ratio(int $numerator, int $denominator): float
+    private function assignmentEngagement(int $c, int $active): float
     {
-        return $denominator > 0 ? $numerator / $denominator : 0.0;
+        $assn = $this->collectPaginated("/courses/{$c}/assignments", ['published' => true])
+                     ->reject(fn ($a) =>
+                         in_array('online_quiz', $a['submission_types'] ?? [], true) ||
+                         ($a['quiz_lti'] ?? false)
+                     );
+        if ($assn->isEmpty() || $active === 0) return 0.0;
+
+        $submitters = $assn->sum(fn ($a) =>
+            $this->collectPaginated("/courses/{$c}/assignments/{$a['id']}/submissions")
+                 ->pluck('user_id')->unique()->count()
+        );
+        return $this->ratio($submitters, $active * $assn->count());
     }
 
-    private function quizEngagement(int $courseId, int $activeStudents): float
+    private function discussionEngagement(int $c, int $active): float
     {
-        $quizzes = $this->collectPaginated("/courses/{$courseId}/quizzes");
-        if ($quizzes->isEmpty() || $activeStudents === 0) {
-            return 0.0;
-        }
+        $topics = $this->collectPaginated("/courses/{$c}/discussion_topics",
+                                          ['only_active' => true]);
 
-        $totalResponders = $quizzes->sum(function ($quiz) use ($courseId) {
-            return $this->collectPaginated(
-                "/courses/{$courseId}/quizzes/{$quiz['id']}/submissions"
-            )->pluck('user_id')->unique()->count();
-        });
+        if ($topics->isEmpty() || $active === 0) return 0.0;
 
-        return $this->ratio($totalResponders, $activeStudents * $quizzes->count());
-    }
-
-    private function assignmentEngagement(int $courseId, int $activeStudents): float
-    {
-        $assignments = $this->collectPaginated("/courses/{$courseId}/assignments", ['published' => true])
-                            ->reject(fn ($a) => in_array('online_quiz', $a['submission_types'] ?? [], true)
-                                             || ($a['quiz_lti'] ?? false));
-
-        if ($assignments->isEmpty() || $activeStudents === 0) {
-            return 0.0;
-        }
-
-        $totalSubmitters = $assignments->sum(function ($assignment) use ($courseId) {
-            return $this->collectPaginated(
-                "/courses/{$courseId}/assignments/{$assignment['id']}/submissions"
-            )->pluck('user_id')->unique()->count();
-        });
-
-        return $this->ratio($totalSubmitters, $activeStudents * $assignments->count());
-    }
-
-    private function discussionEngagement(int $courseId, int $activeStudents): float
-    {
-        $topics = $this->collectPaginated("/courses/{$courseId}/discussion_topics", ['only_active' => true]);
-
-        if ($topics->isEmpty() || $activeStudents === 0) {
-            return 0.0;
-        }
-
-        $totalParticipants = $topics->sum(function ($topic) use ($courseId) {
-            return $this->collectPaginated(
-                "/courses/{$courseId}/discussion_topics/{$topic['id']}/entries"
-            )->pluck('user_id')->unique()->count();
-        });
-
-        return $this->ratio($totalParticipants, $activeStudents * $topics->count());
+        $participants = $topics->sum(fn ($t) =>
+            $this->collectPaginated("/courses/{$c}/discussion_topics/{$t['id']}/entries")
+                 ->pluck('user_id')->unique()->count()
+        );
+        return $this->ratio($participants, $active * $topics->count());
     }
 }

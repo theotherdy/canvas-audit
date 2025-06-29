@@ -3,99 +3,61 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Bus\Batch;
-use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\DB;
-use App\Models\AuditBatch;
-use App\Jobs\AuditCourseJob;
+use App\Services\CanvasCourseAuditor;
+
+use Illuminate\Support\Facades\Log;
 
 class AuditController extends Controller
 {
-    /* -------------------------------------------------
-     * GET /   → show textarea for course IDs
-     * ------------------------------------------------- */
+    /* ---------- GET / ---------- */
     public function index()
     {
         return view('audit.home');
     }
 
-    /* -------------------------------------------------
-     * POST /audit   → validate, create AuditBatch, dispatch jobs
-     * ------------------------------------------------- */
-    public function store(Request $request)
+    /* ---------- POST /audit/run ---------- */
+    public function run(Request $request, CanvasCourseAuditor $auditor)
     {
-        /* 1. Turn the textarea into a unique collection of ints */
         $ids = collect(preg_split('/[\s,]+/', trim($request->input('course_ids'))))
             ->filter()
             ->map(fn ($id) => (int) $id)
-            ->unique();
+            ->unique()
+            ->values();
 
         if ($ids->isEmpty()) {
-            return back()->withErrors(['course_ids' => 'Please enter at least one course ID.']);
+            return back()->withErrors(['course_ids' => 'Enter at least one course ID.'])
+                         ->withInput();
         }
 
-        /* 2. Everything inside one DB transaction so the wrapper row
-              and the Bus batch stay consistent even if something fails. */
-        $auditBatch = DB::transaction(function () use ($ids) {
+        $results   = [];
+        $hasErrors = false;
 
-            // 2a. Create wrapper row (status = pending)
-            $auditBatch = AuditBatch::create([
-                'total_jobs' => $ids->count(),
-                'status'     => 'pending',
-            ]);
+        foreach ($ids as $id) {
+            try {
+                Log::info("Audit  course {$id} ");
+                $results[] = $auditor->run($id);
+                Log::info("Finished audit  course {$id} ");
+            } catch (\Throwable $e) {
+                $hasErrors = true;
+                $results[] = (object) [
+                    'course_id'            => $id,
+                    'error'                => $e->getMessage(),
+                    'published_pages'      => 0,
+                    'classic_quizzes'      => 0,
+                    'new_quizzes'          => 0,
+                    'other_assignments'    => 0,
+                    'discussions'          => 0,
+                    'active_students'      => 0,
+                    'quiz_engagement'      => 0,
+                    'assignment_engagement'=> 0,
+                    'discussion_engagement'=> 0,
+                ];
+            }
+        }
 
-            // 2b. Dispatch the Bus batch
-            $busBatch = Bus::batch(
-                $ids->map(fn ($id) => new AuditCourseJob($id, $auditBatch->id))  // auditBatchId param
-            )
-            ->name("Audit batch #{$auditBatch->id}")
-            ->then(function (Batch $batch) use ($auditBatch) {
-                $auditBatch->update([
-                    'processed_jobs' => $batch->processedJobs(),  // ← method
-                    'status'         => 'finished',
-                    'finished_at'    => now(),
-                ]);
-            })
-            ->catch(function (Batch $batch, \Throwable $e) use ($auditBatch) {
-                $auditBatch->update([
-                    'processed_jobs' => $batch->processedJobs(),  // ← method
-                    'failed_jobs'    => $batch->failedJobs,
-                    'failed_job_ids' => $batch->failedJobIds,
-                    'status'         => 'failed',
-                    'finished_at'    => now(),
-                ]);
-            })
-            ->finally(function (Batch $batch) use ($auditBatch) {
-                // keep counts in sync even if nothing failed
-                if ($batch->finished()) {
-                    $auditBatch->update([
-                        'processed_jobs' => $batch->processedJobs(),  // ← method
-                        'failed_jobs'    => $batch->failedJobs,
-                    ]);
-                }
-            })
-            ->dispatch();
-
-            // 2c. Persist the Bus UUID and mark running
-            $auditBatch->update([
-                'job_batch_id' => $busBatch->id,
-                'status'       => 'running',
-                'started_at'   => now(),
-            ]);
-
-            return $auditBatch;   // returned to outer scope
-        });
-
-        /* 3. Redirect admin to progress page */
-        return redirect()->route('audit.show', $auditBatch);
-    }
-
-    /* -------------------------------------------------
-     * GET /audit/{batch}   → Livewire progress + final table
-     * ------------------------------------------------- */
-    public function show(AuditBatch $batch)
-    {
-        $batch->load('results');   // eager-load rows for the DataTable
-        return view('audit.show', compact('batch'));
+        return view('audit.results', [
+            'results'   => $results,
+            'hasErrors' => $hasErrors,
+        ]);
     }
 }
