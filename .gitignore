@@ -1,0 +1,20 @@
+# dependency folders
+node_modules/
+.playwright/          # browser binaries & traces
+
+# environment / secrets
+.env
+.env.local
+.env.*.local
+
+# editor & OS cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# log / output
+*.log
+*.csv
+*.tsv
+panopto_engagement.csv
