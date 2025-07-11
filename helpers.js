@@ -1,6 +1,8 @@
 import fetch from 'node-fetch';
 import 'dotenv/config';
+import { chromium }       from '@playwright/test';
 import { promises as fs } from 'node:fs';
+import { request as pwRequest } from 'playwright'
 
 /* ---------- env & constants ------------------------ */
 const CANVAS  = process.env.CANVAS_DOMAIN .replace(/\/$/, '');
@@ -14,6 +16,49 @@ const PAN_SC  = (process.env.PANOPTO_SCOPES ||
                  .split(/\s+/);
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
+
+/* ──────────────────────────────────── *
+ * 0.  Storage-state bootstrap (Canvas + Panopto cookies)
+ * ──────────────────────────────────── */
+export async function ensureStorageState({
+  canvasDomain,
+  storageFile
+}) {
+  try {
+    await fs.access(storageFile);           // already exists
+    console.log(`🔒  Using ${storageFile}`);
+    return;
+  } catch { /* file missing */ }
+
+  console.log(`🔑  First-time run – please sign in …`);
+  const browser = await chromium.launch({ headless: false });
+  const ctx     = await browser.newContext();
+  const page    = await ctx.newPage();
+
+  await page.goto(`${canvasDomain}/login`, { waitUntil: 'domcontentloaded' });
+
+  console.log(
+    `   ① Complete SSO for Canvas\n` +
+    `   ② Click any Panopto link so cookies initialise\n` +
+    `   ③ Close the window → cookies will be saved\n`
+  );
+
+  await page.waitForEvent('close', { timeout: 0 });
+
+  await ctx.storageState({ path: storageFile });
+  await browser.close();
+  console.log(`✅  Saved storage → ${storageFile}\n`);
+}
+
+/* ──────────────────────────────────── *
+ * 1.  Build Cookie header for Panopto REST
+ * ──────────────────────────────────── */
+export function panoptoCookieHeader(storageObj, panoptoDomain) {
+  return storageObj.cookies
+    .filter(c => c.domain.includes(new URL(panoptoDomain).hostname))
+    .map(c => `${c.name}=${c.value}`)
+    .join('; ');
+}
 
 /* ---------- generic Canvas fetch with 429-retry ------ */
 async function fetchJSON(url, opts = {}) {
@@ -32,6 +77,43 @@ async function fetchJSON(url, opts = {}) {
     const retry = +res.headers.get('Retry-After') || 2;
     await delay(retry * 1_000);
   }
+}
+
+/* ──────────────────────────────────── *
+ * 2.  Pull **all** /viewers pages (pageNumber pagination)
+ * ──────────────────────────────────── */
+//import fetch from 'node-fetch';
+
+export async function fetchAllViewers({
+  api,                 // <-- the APIRequestContext
+  sessionId,
+  pageSize = 100
+}) {
+  let pageNumber = 0;
+  const out = [];
+  const headers = {
+    // these two lines make the request look like it came from Panopto pages
+    Origin : api._options?.baseURL,          // e.g. https://ox.cloud.panopto.eu
+    Referer: `${api._options?.baseURL}/Panopto/`
+  };
+
+  while (true) {
+    const res = await api.get(
+      `/Panopto/api/v1/sessions/${sessionId}/viewers` +
+      `?pageNumber=${pageNumber}&pageSize=${pageSize}`,
+      { headers }
+    );
+    if (!res.ok())
+      throw new Error(`Panopto ${res.status()}: ${await res.text()}`);
+
+    const body = await res.json();
+    const rows = Array.isArray(body) ? body : body.Results ?? [];
+    out.push(...rows);
+
+    if (rows.length < pageSize) break;        // last page
+    pageNumber += 1;
+  }
+  return out;
 }
 
 /* ---------- Canvas pagination helper ---------------- */
@@ -58,40 +140,6 @@ export async function listCanvasPages(courseId) {
   return rows.map(p => ({ title: p.title, url: p.url }));  // minimal
 }
 
-/* ---------- Panopto client-credentials token -------- */
-let _token, _exp = 0;
-
-export async function panoptoToken() {
-  const now = Date.now() / 1_000;
-  if (_token && now < _exp - 60) return _token;    // reuse
-
-  const res = await fetch(`${PANOPTO}/Panopto/oauth2/connect/token`, {
-    method : 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body   : new URLSearchParams({
-      grant_type   : 'client_credentials',
-      client_id    : PAN_ID,
-      client_secret: PAN_SEC,
-      scope        : PAN_SC.join(' ')
-    })
-  });
-  if (!res.ok) throw new Error('Panopto OAuth failed: ' + res.statusText);
-
-  const j  = await res.json();
-  _token   = j.access_token;
-  _exp     = now + (j.expires_in || 3_600);
-  return _token;
-}
-
-async function fetchViewersInPage(sessionId) {
-  return await page.evaluate(async (sid) => {
-    const r = await fetch(`/Panopto/api/v1/sessions/${sid}/viewers`,
-                           { credentials: 'include' });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();    // marshalled back to Node automatically
-  }, sessionId);
-}
-
 /**
  * Tries to locate ONE iframe whose src contains "custom_context_delivery".
  * Searches every descendant frame, keeps scrolling until it appears,
@@ -99,7 +147,7 @@ async function fetchViewersInPage(sessionId) {
  *
  * Returns true once the HTML dump happens, false otherwise.
  */
-export async function dumpPanoptoDebugFrame(page, file = 'panopto_iframe.html') {
+/*export async function dumpPanoptoDebugFrame(page, file = 'panopto_iframe.html') {
   const deadline = Date.now() + 30_000;          // 30 s hard limit
   let alreadyScrolled = false;
 
@@ -137,6 +185,14 @@ export async function dumpPanoptoDebugFrame(page, file = 'panopto_iframe.html') 
 
   console.warn('[Panopto-debug] No iframe with custom_context_delivery found after 30 s');
   return false;
+}*/
+
+/** Build an APIRequestContext that re-uses your authStorage.json */
+export async function panoptoApi({ storageFile, panoptoDomain }) {
+  return await pwRequest.newContext({
+    baseURL: panoptoDomain,
+    storageState: storageFile
+  });
 }
 
 /**
@@ -146,11 +202,11 @@ export async function dumpPanoptoDebugFrame(page, file = 'panopto_iframe.html') 
  * @param {import('@playwright/test').Page} page
  * @param {string} [file]  destination filename
  */
-export async function dumpMainFrameHTML(page, file = 'playwright_mainframe.html') {
+/*export async function dumpMainFrameHTML(page, file = 'playwright_mainframe.html') {
   const html = await page.content();                 // same as document.documentElement.outerHTML
   await fs.writeFile(file, html);
   console.log(`\n📝  Wrote full page HTML ➜  ${file}\n`);
-}
+}*/
 
 
 
