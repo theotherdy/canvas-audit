@@ -18,3 +18,7 @@ Thumbs.db
 *.csv
 *.tsv
 panopto_engagement.csv
+panopto_iframe.html
+playwright_mainframe.html
+canvasStorage.json
+

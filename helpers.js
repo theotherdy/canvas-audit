@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import 'dotenv/config';
+import { promises as fs } from 'node:fs';
 
 /* ---------- env & constants ------------------------ */
 const CANVAS  = process.env.CANVAS_DOMAIN .replace(/\/$/, '');
@@ -91,18 +92,66 @@ async function fetchViewersInPage(sessionId) {
   }, sessionId);
 }
 
+/**
+ * Tries to locate ONE iframe whose src contains "custom_context_delivery".
+ * Searches every descendant frame, keeps scrolling until it appears,
+ * and retries for up to 30 s.
+ *
+ * Returns true once the HTML dump happens, false otherwise.
+ */
+export async function dumpPanoptoDebugFrame(page, file = 'panopto_iframe.html') {
+  const deadline = Date.now() + 30_000;          // 30 s hard limit
+  let alreadyScrolled = false;
+
+  while (Date.now() < deadline) {
+    // 1️⃣  Look in the main page and every sub-frame we can reach.
+    for (const frame of page.frames()) {
+      const handle = await frame.$('iframe[src*="custom_context_delivery"]');
+      if (handle) {
+        const child = await handle.contentFrame();
+        if (!child) continue;                    // not ready yet
+
+        await child.waitForLoadState('domcontentloaded');
+        const html = await child.evaluate(() => document.documentElement.outerHTML);
+
+        //console.log('\n===== BEGIN Panopto iframe HTML =====\n');
+        //console.log(html);
+        //console.log('\n=====  END Panopto iframe HTML  =====\n');
+
+        await fs.writeFile(file, html, 'utf8');
+        console.log(`\n📝  Full iframe HTML written to ${file}\n`);
+
+        return true;
+      }
+    }
+
+    // 2️⃣  If not found, give the page a little nudge:
+    //     –> Scroll once to trigger lazy-loading
+    //     –> Wait a bit before next pass
+    if (!alreadyScrolled) {
+      await page.mouse.wheel(0, 400);            // single “page down”
+      alreadyScrolled = true;
+    }
+    await page.waitForTimeout(500);              // short back-off
+  }
+
+  console.warn('[Panopto-debug] No iframe with custom_context_delivery found after 30 s');
+  return false;
+}
+
+/**
+ * Dump the outer HTML of the **main** frame Playwright is on
+ * and save it to disk for inspection.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} [file]  destination filename
+ */
+export async function dumpMainFrameHTML(page, file = 'playwright_mainframe.html') {
+  const html = await page.content();                 // same as document.documentElement.outerHTML
+  await fs.writeFile(file, html);
+  console.log(`\n📝  Wrote full page HTML ➜  ${file}\n`);
+}
 
 
-/* ---------- PUBLIC: fetch viewers for one session --- */
-/*export async function panoptoViewers(sessionId, token = null) {
-  token = token || await panoptoToken();
 
-  const res = await fetch(
-    `${PANOPTO}/Panopto/api/v1/sessions/${sessionId}/viewers`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!res.ok)
-    throw new Error(`Panopto viewers ${res.status}: ${sessionId}`);
 
-  return res.json();      // array of viewer objects
-}*/
