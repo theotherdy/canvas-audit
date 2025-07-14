@@ -47,4 +47,4 @@ for (const courseId of COURSES) {
 
 await browser.close();
 await fs.writeFile('panopto_session_ids.csv', stringify(OUT, { header: true }));
-console.log('✅  wrote session_ids.csv');
+console.log('✅  wrote panopto_session_ids.csv');

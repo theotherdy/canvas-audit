@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "crawl:canvas": "node crawl_canvas.js",
+    "crawl_canvas": "node crawl_canvas.js",
     "merge": "node merge_engagement.js",
     "format": "prettier --write \"**/*.js\""
   },

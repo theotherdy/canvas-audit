@@ -8,14 +8,14 @@ cp .env.example .env    # then fill in your values
 ### Collect Panopto session IDs from Canvas
 
 ```bash
-npm run crawl:canvas
+node run crawl_canvas
 ```
 
 The first run opens a browser – log in to Canvas and click a Panopto link
 so the cookies cover both domains. Close the window; cookies are saved to
 `authStorage.json`.
 
-**NOTE: Will only prompt for relogin to Canvas if authStorage.json is not present. Delet this file if getting 401 errors**
+**NOTE: Will only prompt for relogin to Canvas if authStorage.json is not present. Delete this file if getting 401 errors**
 
 ### Fetch viewer analytics in Panopto
 

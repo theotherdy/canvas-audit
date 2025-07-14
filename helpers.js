@@ -1,9 +1,10 @@
 import { chromium } from '@playwright/test';
 import { promises as fs } from 'node:fs';
+import 'dotenv/config';
 import fetch from 'node-fetch';
 
 /* ---------- env & constants ------------------------ */
-const CANVAS  = process.env.CANVAS_DOMAIN .replace(/\/$/, '');
+const CANVAS  = process.env.CANVAS_DOMAIN.replace(/\/$/, '');
 const CV_PAT  = process.env.CANVAS_TOKEN;
 
 //const PANOPTO = process.env.PANOPTO_DOMAIN.replace(/\/$/, '');
@@ -59,7 +60,7 @@ export async function ensureStorageState({
 }*/
 
 /* ---------- generic Canvas fetch with 429-retry ------ */
-/*async function fetchJSON(url, opts = {}) {
+async function fetchJSON(url, opts = {}) {
   const hdrs = { ...(opts.headers || {}) };
   if (url.startsWith(CANVAS) && CV_PAT)
     hdrs.Authorization = `Bearer ${CV_PAT}`;
@@ -74,7 +75,7 @@ export async function ensureStorageState({
     const retry = +res.headers.get('Retry-After') || 2;
     await delay(retry * 1_000);
   }
-}*/
+}
 
 /* ──────────────────────────────────── *
  * 2.  Pull **all** /viewers pages (pageNumber pagination)
