@@ -1,19 +1,17 @@
-import fetch from 'node-fetch';
-import 'dotenv/config';
-import { chromium }       from '@playwright/test';
+import { chromium } from '@playwright/test';
 import { promises as fs } from 'node:fs';
-import { request as pwRequest } from 'playwright'
+import fetch from 'node-fetch';
 
 /* ---------- env & constants ------------------------ */
 const CANVAS  = process.env.CANVAS_DOMAIN .replace(/\/$/, '');
 const CV_PAT  = process.env.CANVAS_TOKEN;
 
-const PANOPTO = process.env.PANOPTO_DOMAIN.replace(/\/$/, '');
-const PAN_ID  = process.env.PANOPTO_CLIENT_ID;
-const PAN_SEC = process.env.PANOPTO_CLIENT_SECRET;
-const PAN_SC  = (process.env.PANOPTO_SCOPES ||
-                 'sessions.read viewers.read folders.read')
-                 .split(/\s+/);
+//const PANOPTO = process.env.PANOPTO_DOMAIN.replace(/\/$/, '');
+////const PAN_ID  = process.env.PANOPTO_CLIENT_ID;
+//const PAN_SEC = process.env.PANOPTO_CLIENT_SECRET;
+//const PAN_SC  = (process.env.PANOPTO_SCOPES ||
+ //                'sessions.read viewers.read folders.read')
+  //               .split(/\s+/);
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
@@ -53,16 +51,15 @@ export async function ensureStorageState({
 /* ──────────────────────────────────── *
  * 1.  Build Cookie header for Panopto REST
  * ──────────────────────────────────── */
-export function panoptoCookieHeader(storageObj, panoptoDomain) {
+/*export function panoptoCookieHeader(storageObj, panoptoDomain) {
   return storageObj.cookies
     .filter(c => c.domain.includes(new URL(panoptoDomain).hostname))
     .map(c => `${c.name}=${c.value}`)
     .join('; ');
-}
+}*/
 
 /* ---------- generic Canvas fetch with 429-retry ------ */
-async function fetchJSON(url, opts = {}) {
-  /* attach PAT automatically for Canvas calls */
+/*async function fetchJSON(url, opts = {}) {
   const hdrs = { ...(opts.headers || {}) };
   if (url.startsWith(CANVAS) && CV_PAT)
     hdrs.Authorization = `Bearer ${CV_PAT}`;
@@ -77,14 +74,14 @@ async function fetchJSON(url, opts = {}) {
     const retry = +res.headers.get('Retry-After') || 2;
     await delay(retry * 1_000);
   }
-}
+}*/
 
 /* ──────────────────────────────────── *
  * 2.  Pull **all** /viewers pages (pageNumber pagination)
  * ──────────────────────────────────── */
 //import fetch from 'node-fetch';
 
-export async function fetchAllViewers({
+/*export async function fetchAllViewers({
   api,                 // <-- the APIRequestContext
   sessionId,
   pageSize = 100
@@ -114,7 +111,7 @@ export async function fetchAllViewers({
     pageNumber += 1;
   }
   return out;
-}
+}*/
 
 /* ---------- Canvas pagination helper ---------------- */
 async function fetchAll(firstUrl) {
@@ -188,12 +185,12 @@ export async function listCanvasPages(courseId) {
 }*/
 
 /** Build an APIRequestContext that re-uses your authStorage.json */
-export async function panoptoApi({ storageFile, panoptoDomain }) {
+/*export async function panoptoApi({ storageFile, panoptoDomain }) {
   return await pwRequest.newContext({
     baseURL: panoptoDomain,
     storageState: storageFile
   });
-}
+}*/
 
 /**
  * Dump the outer HTML of the **main** frame Playwright is on

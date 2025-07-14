@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "crawl:canvas": "node crawl_canvas.js",
+    "merge": "node merge_engagement.js",
+    "format": "prettier --write \"**/*.js\""
   },
   "keywords": [],
   "author": "",
@@ -14,9 +16,8 @@
     "@playwright/test": "^1.53.2",
     "csv-stringify": "^6.6.0",
     "dotenv": "^17.1.0",
-    "node-fetch": "^3.3.2"
-  },
-  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "prettier": "^3.3.0",
     "csv-parse": "^6.0.0"
   }
 }
