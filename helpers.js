@@ -1,5 +1,6 @@
 import { chromium } from '@playwright/test';
 import { promises as fs } from 'node:fs';
+import { URL } from 'node:url';
 import 'dotenv/config';
 import fetch from 'node-fetch';
 
@@ -77,45 +78,8 @@ async function fetchJSON(url, opts = {}) {
   }
 }
 
-/* ──────────────────────────────────── *
- * 2.  Pull **all** /viewers pages (pageNumber pagination)
- * ──────────────────────────────────── */
-//import fetch from 'node-fetch';
-
-/*export async function fetchAllViewers({
-  api,                 // <-- the APIRequestContext
-  sessionId,
-  pageSize = 100
-}) {
-  let pageNumber = 0;
-  const out = [];
-  const headers = {
-    // these two lines make the request look like it came from Panopto pages
-    Origin : api._options?.baseURL,          // e.g. https://ox.cloud.panopto.eu
-    Referer: `${api._options?.baseURL}/Panopto/`
-  };
-
-  while (true) {
-    const res = await api.get(
-      `/Panopto/api/v1/sessions/${sessionId}/viewers` +
-      `?pageNumber=${pageNumber}&pageSize=${pageSize}`,
-      { headers }
-    );
-    if (!res.ok())
-      throw new Error(`Panopto ${res.status()}: ${await res.text()}`);
-
-    const body = await res.json();
-    const rows = Array.isArray(body) ? body : body.Results ?? [];
-    out.push(...rows);
-
-    if (rows.length < pageSize) break;        // last page
-    pageNumber += 1;
-  }
-  return out;
-}*/
-
 /* ---------- Canvas pagination helper ---------------- */
-async function fetchAll(firstUrl) {
+export async function fetchAll(firstUrl) {
   const out   = [];
   let   url   = firstUrl;
   const next  = /<([^>]+)>;\s*rel="next"/;
@@ -138,73 +102,136 @@ export async function listCanvasPages(courseId) {
   return rows.map(p => ({ title: p.title, url: p.url }));  // minimal
 }
 
-/**
- * Tries to locate ONE iframe whose src contains "custom_context_delivery".
- * Searches every descendant frame, keeps scrolling until it appears,
- * and retries for up to 30 s.
- *
- * Returns true once the HTML dump happens, false otherwise.
- */
-/*export async function dumpPanoptoDebugFrame(page, file = 'panopto_iframe.html') {
-  const deadline = Date.now() + 30_000;          // 30 s hard limit
-  let alreadyScrolled = false;
+/* --- Decode the url= parameter: --- */
+export async function extractPanoptoSessionGuids(page) {
+  //console.log("🔎 Page:", page);
+  const guids = new Set();
 
-  while (Date.now() < deadline) {
-    // 1️⃣  Look in the main page and every sub-frame we can reach.
-    for (const frame of page.frames()) {
-      const handle = await frame.$('iframe[src*="custom_context_delivery"]');
-      if (handle) {
-        const child = await handle.contentFrame();
-        if (!child) continue;                    // not ready yet
-
-        await child.waitForLoadState('domcontentloaded');
-        const html = await child.evaluate(() => document.documentElement.outerHTML);
-
-        //console.log('\n===== BEGIN Panopto iframe HTML =====\n');
-        //console.log(html);
-        //console.log('\n=====  END Panopto iframe HTML  =====\n');
-
-        await fs.writeFile(file, html, 'utf8');
-        console.log(`\n📝  Full iframe HTML written to ${file}\n`);
-
-        return true;
-      }
+  const allFrames = page.frames();
+  console.log("🔎 All frames:", allFrames.map(f => f.url()));
+  
+  // Grab all Panopto iframes
+  const frames = page.frames().filter(f => f.url().includes("panopto"));
+  console.log("🔎 Panopto frames:", frames.map(f => f.url()));
+  for (const f of frames) {
+    try {
+      const bodyHtml = await f.content();
+      const matches = [...bodyHtml.matchAll(/Embed\.aspx[^"']*id=([0-9a-f-]{36})/ig)];
+      matches.forEach(m => guids.add(m[1]));
+    } catch (e) {
+      console.warn("Panopto iframe parse failed:", e.message);
     }
-
-    // 2️⃣  If not found, give the page a little nudge:
-    //     –> Scroll once to trigger lazy-loading
-    //     –> Wait a bit before next pass
-    if (!alreadyScrolled) {
-      await page.mouse.wheel(0, 400);            // single “page down”
-      alreadyScrolled = true;
-    }
-    await page.waitForTimeout(500);              // short back-off
   }
 
-  console.warn('[Panopto-debug] No iframe with custom_context_delivery found after 30 s');
-  return false;
-}*/
-
-/** Build an APIRequestContext that re-uses your authStorage.json */
-/*export async function panoptoApi({ storageFile, panoptoDomain }) {
-  return await pwRequest.newContext({
-    baseURL: panoptoDomain,
-    storageState: storageFile
-  });
-}*/
+  return [...guids];
+}
 
 /**
- * Dump the outer HTML of the **main** frame Playwright is on
- * and save it to disk for inspection.
+ * Get active student IDs for a course
+ * (filters out concluded, dropped, and duplicates across sections).
  *
- * @param {import('@playwright/test').Page} page
- * @param {string} [file]  destination filename
+ * @param {string} courseId
+ * @param {string} canvasDomain
+ * @param {string} token
+ * @returns {Promise<Set<number>>}
  */
-/*export async function dumpMainFrameHTML(page, file = 'playwright_mainframe.html') {
-  const html = await page.content();                 // same as document.documentElement.outerHTML
-  await fs.writeFile(file, html);
-  console.log(`\n📝  Wrote full page HTML ➜  ${file}\n`);
-}*/
+export async function getActiveStudentSet(courseId, canvasDomain, token) {
+  async function fetchAll(url) {
+    const out = [];
+    let nextUrl = url;
+    const next = /<([^>]+)>;\s*rel="next"/;
+
+    while (nextUrl) {
+      const res = await fetch(nextUrl, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText} ← ${nextUrl}`);
+
+      const data = await res.json();
+      out.push(...data);
+
+      const link = res.headers.get("Link");
+      nextUrl = link && next.test(link) ? next.exec(link)[1] : null;
+    }
+    return out;
+  }
+
+  const rows = await fetchAll(
+    `${canvasDomain}/api/v1/courses/${courseId}/enrollments?type[]=StudentEnrollment&per_page=100`
+  );
+
+  return new Set(
+    rows
+      .filter(
+        e => e.type === "StudentEnrollment" && e.enrollment_state === "active"
+      )
+      .map(e => e.user_id)
+  );
+}
+
+/**
+ * Get wiki page slugs a student has viewed in a given course,
+ * using the web endpoint /courses/:id/users/:id/usage.json
+ *
+ * @param {object} page Playwright Page (authenticated context)
+ * @param {string|number} courseId
+ * @param {string|number} userId
+ * @returns {Promise<Set<string>>}
+ */
+export async function getStudentPageUsageWeb(page, courseId, userId, canvasDomain) {
+  try {
+    const url = `${canvasDomain}/courses/${courseId}/users/${userId}/usage.json`;
+    const res = await page.goto(url, { waitUntil: "domcontentloaded" });
+    if (!res) {
+      console.warn(`⚠️ no response from ${url}`);
+      return new Set();
+    }
+    const body = await res.text();
+    //console.log(body);
+    const rows = JSON.parse(body);
+
+    const slugs = new Set();
+    for (const row of rows) {
+      if (row.asset_group_code?.includes(`course_${courseId}_wiki_page`)) {
+        const m = row.asset_code.match(/course_\d+_wiki_page_(.+)$/);
+        if (m) slugs.add(m[1]);
+      }
+    }
+    return slugs;
+  } catch (e) {
+    console.warn(`⚠️ usage.json fetch failed for student ${userId} in course ${courseId}:`, e.message);
+    return new Set();
+  }
+}
+
+/**
+ * Run async tasks with limited concurrency
+ *
+ * @param {Array<Function>} tasks - array of functions returning a Promise
+ * @param {number} limit - max number of concurrent tasks
+ * @returns {Promise<Array>}
+ */
+export async function runWithConcurrency(tasks, limit = 5) {
+  const results = [];
+  let idx = 0;
+
+  async function worker() {
+    while (idx < tasks.length) {
+      const current = idx++;
+      try {
+        results[current] = await tasks[current]();
+      } catch (e) {
+        console.warn("⚠️ Task failed:", e.message);
+        results[current] = null;
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
 
 
 

@@ -24,7 +24,8 @@ const {
   CANVAS_TOKEN,
   COURSE_IDS,
   PAGE_LIMIT = 0,
-  STORAGE_FILE
+  STORAGE_FILE,
+  SINGLE_PAGE  // new: optionally specify single page slug to audit
 } = process.env;
 
 if (!CANVAS_DOMAIN || !CANVAS_TOKEN || !COURSE_IDS)
@@ -32,6 +33,7 @@ if (!CANVAS_DOMAIN || !CANVAS_TOKEN || !COURSE_IDS)
 
 const COURSES = COURSE_IDS.split(',').map(s => s.trim());
 const PAGE_LIMIT_N = +PAGE_LIMIT;
+const SINGLE_PAGE_SLUG = SINGLE_PAGE && SINGLE_PAGE.trim();  
 
 /* ─── tiny logger ----------------------------------------------------------------------------------------- */
 function logApi(method, url) {
@@ -58,8 +60,12 @@ async function api(url, qs = '') {
 
 /* ─── metric helpers ------------------------------------------------------------------------------------- */
 async function rosterSize(courseId) {
-  const enrs = await api(`/courses/${courseId}/enrollments`, '?type[]=StudentEnrollment&per_page=100');
-  return new Set(enrs.map(e => e.user_id)).size;
+  const activeStudents = await H.getActiveStudentSet(
+    courseId,
+    CANVAS_DOMAIN,
+    CANVAS_TOKEN
+  );
+  return activeStudents.size;
 }
 
 async function listQuizzes(courseId) {
@@ -78,14 +84,24 @@ async function listOtherAssignments(courseId) {
     !a.submission_types.includes('external_tool'));
 }
 
-async function submissionsPct(items, students) {
-  let submitted = 0;
+async function submissionsPct(items, activeStudentIds) {
+  let pctSum = 0;
+
   for (const it of items) {
-    const subs = await api(`/courses/${it.course_id}/assignments/${it.id}/submissions`, '?per_page=100');
-    const done = subs.filter(s => s.workflow_state !== 'unsubmitted').length;
-    submitted += done / students;
+    const subs = await H.fetchAll(
+      `${CANVAS_DOMAIN}/api/v1/courses/${it.course_id}/assignments/${it.id}/submissions?per_page=100`
+    );
+
+    const subsFromActive = subs.filter(s => activeStudentIds.has(s.user_id));
+    const done = subsFromActive.filter(
+      s => s.workflow_state !== "unsubmitted"
+    ).length;
+
+    const denom = activeStudentIds.size || 1;
+    pctSum += done / denom;
   }
-  return items.length ? ((submitted / items.length) * 100).toFixed(1) : 0;
+
+  return items.length ? ((pctSum / items.length) * 100).toFixed(1) : 0;
 }
 
 /* ─── main ----------------------------------------------------------------------------------------------- */
@@ -94,23 +110,32 @@ const browser = await chromium.launch({ headless: true });
 const ctx     = await browser.newContext({ storageState: STORAGE_FILE });
 const page    = await ctx.newPage();
 
-const METRICS = [];
+const METRICS = [];    
 const SESSION_ROWS = [];
 
 for (const courseId of COURSES) {
   console.log(`\n🧭  Course ${courseId}`);
 
   /* roster */
-  const students = await rosterSize(courseId);
+  const activeStudents = await H.getActiveStudentSet(courseId, CANVAS_DOMAIN, CANVAS_TOKEN);
+  const students = activeStudents.size;
   console.log(`   • students: ${students}`);
 
-  /* pages */
-  let pages = await H.listCanvasPages(courseId);
-  if (PAGE_LIMIT_N) pages = pages.slice(0, PAGE_LIMIT_N);
-  console.log(`   • published pages: ${pages.length}`);
+  let pages;
+  if (SINGLE_PAGE_SLUG) {
+    console.log(`   • SINGLE_PAGE set: only processing page slug "${SINGLE_PAGE_SLUG}"`);
+    // Build a minimal page object; your process assumes page has .url and maybe .view_count etc
+    pages = [ { url: SINGLE_PAGE_SLUG, view_count: 0 /* or null/undefined if not used */ } ];
+  } else {
+    pages = await H.listCanvasPages(courseId);
+    if (PAGE_LIMIT_N) pages = pages.slice(0, PAGE_LIMIT_N);
+    console.log(`   • published pages: ${pages.length}`);
+  }
 
   //let viewedTotal = 0;
-  let viewersSum = 0;
+  //let viewersSum = 0;
+  // Build page -> set of student IDs who viewed it
+  const pageViewers = {};
   let panoPageCount = 0, panoEmbeds = 0;
   let h5pPageCount  = 0, h5pEmbeds  = 0;
   const sessionSet = new Set();
@@ -125,51 +150,68 @@ for (const courseId of COURSES) {
     page.on('request', h);
 
     await page.goto(url, { waitUntil: 'networkidle' });
+
     page.off('request', h);
 
     const html = await page.content();
 
-    /* page views – Canvas Page object already returns view_count */
-    //if (typeof p.view_count === 'number') viewedTotal += p.view_count ? 1 : 0;
-    if (typeof p.view_count === 'number') viewersSum += Math.min(p.view_count, students);
-
-    /* page views (may 404 on older sites) */
-    /*try {
-      const views = await api(`/courses/${courseId}/pages/${p.url}/views`,
-                              '?per_page=100');
-      viewersSum += new Set(views.map(v => v.user_id)).size;
-    } catch {  }*/
-
+    for (const uid of activeStudents) {
+      const slugs = await H.getStudentPageUsageWeb(page, courseId, uid, CANVAS_DOMAIN);
+      for (const slug of slugs) {
+        if (!pageViewers[slug]) pageViewers[slug] = new Set();
+        pageViewers[slug].add(uid);
+      }
+    }
+     
     /* count embeds */
-    const pano = [...html.matchAll(/Embed\.aspx[^"']*id=([0-9a-f-]{36})/ig)];
     const h5p  = [...html.matchAll(/h5p(?:\.com|_embed).*?id=([0-9]+)/ig)];
 
-    if (pano.length) { panoPageCount++; panoEmbeds += pano.length; pano.forEach(m => sessionSet.add(m[1])); }
+    //console.log(html);
+    const panoGuids = await H.extractPanoptoSessionGuids(page);
+    if (panoGuids.length) {
+      panoPageCount++;
+      panoEmbeds += panoGuids.length;
+      panoGuids.forEach(id => sessionSet.add(id));
+    }
+    console.log(`        Panopto: ${panoGuids.length}`);
+
+
+
     if (h5p.length)  { h5pPageCount++;  h5pEmbeds  += h5p.length;  }
 
     console.log(`      · ${url}`);
-    console.log(`        Panopto: ${pano.length}  H5P: ${h5p.length}`);
+    //console.log(`        Panopto: ${pano.length}  H5P: ${h5p.length}`);
   }
 
   /* quizzes / assignments */
   const { classic, newQuiz } = await listQuizzes(courseId);
   const otherAss = await listOtherAssignments(courseId);
 
-  const classicPct = await submissionsPct(classic, students);
-  const newPct     = await submissionsPct(newQuiz, students);
-  const otherPct   = await submissionsPct(otherAss, students);
+  const classicPct = await submissionsPct(classic, activeStudents);
+  const newPct     = await submissionsPct(newQuiz, activeStudents);
+  const otherPct   = await submissionsPct(otherAss, activeStudents);
+
+  let totalPct = 0;
+  const numPages = Object.keys(pageViewers).length;
+  for (const viewers of Object.values(pageViewers)) {
+    totalPct += viewers.size / activeStudents.size;
+  }
+
+  const meanPercentViewed = numPages
+    ? ((totalPct / numPages) * 100).toFixed(1)
+    : 0;
 
   //const pagesViewedPct = pages.length ? ((viewedTotal / pages.length) / students * 100).toFixed(1) : 0;
-  const pagesViewedPct =
-  pages.length && students
-    ? (viewersSum / (pages.length * students) * 100).toFixed(1)
-    : 0;
+  /*const pagesViewedPct =
+  pages.length && activeStudents.size
+    ? ((viewersSum / (pages.length * activeStudents.size)) * 100).toFixed(1)
+    : 0;*/
 
   METRICS.push({
     courseId,
     students,
     pagesPublished: pages.length,
-    pagesViewedPct,
+    meanPercentViewed,  
     quizzesClassic: classic.length,
     quizzesNew: newQuiz.length,
     quizzesSubmittedPctClassic: classicPct,
