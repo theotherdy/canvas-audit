@@ -149,31 +149,107 @@ for (const courseId of COURSES) {
     const h = r => reqs.push(r.url());
     page.on('request', h);
 
+    // strict per-response map: record GUIDs (meta og:url / form action) for each panopto response
+    page._panoptoResponseMap = page._panoptoResponseMap || new Map();
+    const panoptoResponseUrls = new Set();
+
+    // strict GUID pattern & extraction regexes (meta og:url and form action only)
+    const guidPattern = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+    const ogMetaRegex = new RegExp(`<meta[^>]*property=["']og:url["'][^>]*content=["'][^"']*id=(${guidPattern})[^"']*["'][^>]*>`, 'i');
+    const formActionRegex = new RegExp(`<form[^>]*action=["'][^"']*id=(${guidPattern})[^"']*["'][^>]*>`, 'ig');
+
+    const respHandler = async (res) => {
+      try {
+        const u = res.url();
+        if (!/panopto|embed\.aspx|Viewer\.aspx|EmbedSession/i.test(u)) return;
+        if (panoptoResponseUrls.has(u)) return;
+        panoptoResponseUrls.add(u);
+
+        console.log('🔁 saw Panopto network response:', u);
+        let text = '';
+        try {
+          text = await res.text();
+        } catch (e) {
+          console.warn('    ⚠️ could not read response text for', u, e.message);
+          return;
+        }
+
+        const found = new Set();
+        // meta og:url
+        const ogMatch = text.match(ogMetaRegex);
+        if (ogMatch && ogMatch[1]) found.add(ogMatch[1]);
+
+        // form action (may have multiples)
+        let m;
+        while ((m = formActionRegex.exec(text)) !== null) {
+          if (m[1]) found.add(m[1]);
+        }
+
+        if (found.size) {
+          console.log('    ▶ extracted GUID(s) (meta/form action) from', u, ':', [...found]);
+          page._panoptoResponseMap.set(u, [...found]);
+        } else {
+          console.log('    (no GUID in meta/form action for response; skipping)');
+          page._panoptoResponseMap.set(u, []);
+        }
+      } catch (err) {
+        console.error('    error in panopto response handler', err);
+      }
+    };
+
+    page.on('response', respHandler);
+
+
     await page.goto(url, { waitUntil: 'networkidle' });
 
+    // short grace period to let any lazy-loaded embed requests finish
+    try { await page.waitForTimeout(800); } catch(e){}
+
     page.off('request', h);
+    page.off('response', respHandler);
+
+
+    //page.off('request', h);
 
     const html = await page.content();
 
+    // Ensure pageViewers has an entry for this page slug (even if zero viewers)
+    if (!pageViewers[p.url]) pageViewers[p.url] = new Set();
+
+    // For each active student, ask which slugs they viewed and only add them
+    // to the current page's viewer set if the student's usage includes this page slug.
     for (const uid of activeStudents) {
       const slugs = await H.getStudentPageUsageWeb(page, courseId, uid, CANVAS_DOMAIN);
-      for (const slug of slugs) {
-        if (!pageViewers[slug]) pageViewers[slug] = new Set();
-        pageViewers[slug].add(uid);
+      // slugs is a Set of slugs that student has viewed
+      if (slugs.has(p.url)) {
+        pageViewers[p.url].add(uid);
       }
     }
      
     /* count embeds */
     const h5p  = [...html.matchAll(/h5p(?:\.com|_embed).*?id=([0-9]+)/ig)];
 
-    //console.log(html);
-    const panoGuids = await H.extractPanoptoSessionGuids(page);
-    if (panoGuids.length) {
+    // extract per-iframe GUIDs (one item per Panopto iframe, in frame order)
+    const panoGuidsPerFrame = await H.extractPanoptoSessionGuids(page);
+
+    if (panoGuidsPerFrame.length) {
       panoPageCount++;
-      panoEmbeds += panoGuids.length;
-      panoGuids.forEach(id => sessionSet.add(id));
+      panoEmbeds += panoGuidsPerFrame.length;
+
+      // add GUIDs to sessionSet (deduplicated)
+      panoGuidsPerFrame.forEach(g => { if (g) sessionSet.add(g); });
+
+      // Emit one CSV row per iframe (rows are collected in SESSION_ROWS at the end of the script)
+      for (let i = 0; i < panoGuidsPerFrame.length; i++) {
+        const guid = panoGuidsPerFrame[i] || ''; // blank if nothing captured for that iframe
+        SESSION_ROWS.push({ courseId, sessionId: guid });
+      }
+    } else {
+      // no panopto frames captured on this page
+      // If you prefer a row with empty GUID when there are frames but no GUIDs, handle here.
     }
-    console.log(`        Panopto: ${panoGuids.length}`);
+
+    console.log(`        Panopto iframes: ${panoGuidsPerFrame.length}`);
 
 
 
@@ -191,21 +267,23 @@ for (const courseId of COURSES) {
   const newPct     = await submissionsPct(newQuiz, activeStudents);
   const otherPct   = await submissionsPct(otherAss, activeStudents);
 
+  // Use pages.length (the number of pages we actually processed) as the denominator.
+  // For each page slug in pages, compute percentage of active students who viewed it.
+  const numPages = pages.length || 0;
   let totalPct = 0;
-  const numPages = Object.keys(pageViewers).length;
-  for (const viewers of Object.values(pageViewers)) {
-    totalPct += viewers.size / activeStudents.size;
+  let meanPercentViewed = 0;  
+
+  if (numPages && activeStudents.size) {
+    for (const p of pages) {
+      const slug = p.url;
+      const viewers = pageViewers[slug] ? pageViewers[slug].size : 0;
+      totalPct += (viewers / activeStudents.size) * 100; // percent for this page
+    }
+    // mean percent across pages:
+    meanPercentViewed = (totalPct / numPages).toFixed(1);
+  } else {
+    meanPercentViewed = 0;
   }
-
-  const meanPercentViewed = numPages
-    ? ((totalPct / numPages) * 100).toFixed(1)
-    : 0;
-
-  //const pagesViewedPct = pages.length ? ((viewedTotal / pages.length) / students * 100).toFixed(1) : 0;
-  /*const pagesViewedPct =
-  pages.length && activeStudents.size
-    ? ((viewersSum / (pages.length * activeStudents.size)) * 100).toFixed(1)
-    : 0;*/
 
   METRICS.push({
     courseId,
@@ -224,7 +302,7 @@ for (const courseId of COURSES) {
     h5pItems: h5pEmbeds
   });
 
-  sessionSet.forEach(s => SESSION_ROWS.push({ courseId, sessionId: s }));
+  //sessionSet.forEach(s => SESSION_ROWS.push({ courseId, sessionId: s }));
 }
 
 await browser.close();

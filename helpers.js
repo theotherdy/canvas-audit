@@ -102,29 +102,80 @@ export async function listCanvasPages(courseId) {
   return rows.map(p => ({ title: p.title, url: p.url }));  // minimal
 }
 
-/* --- Decode the url= parameter: --- */
+/* GetPanopto SessionIDs from the loaded iFrame */
 export async function extractPanoptoSessionGuids(page) {
-  //console.log("🔎 Page:", page);
-  const guids = new Set();
+  // Strict: only use GUIDs extracted earlier by the network response listener
+  // (stored in page._panoptoResponseMap by crawl_canvas.js respHandler).
+  const out = [];
 
-  const allFrames = page.frames();
-  console.log("🔎 All frames:", allFrames.map(f => f.url()));
-  
-  // Grab all Panopto iframes
-  const frames = page.frames().filter(f => f.url().includes("panopto"));
-  console.log("🔎 Panopto frames:", frames.map(f => f.url()));
-  for (const f of frames) {
+  try {
+    const frames = page.frames().filter(f => /panopto/i.test(f.url()));
+    console.log("🔎 Panopto frames (order):", frames.map(f => f.url()));
+
+    // If no frames, return empty array
+    if (!frames.length) {
+      console.log("    ▶ no panopto frames found.");
+      return out;
+    }
+
+    // If no response map exists, nothing to extract
+    const respMap = page._panoptoResponseMap || new Map();
+    if (!respMap.size) {
+      console.log("    ▶ no panopto network responses captured (respMap empty).");
+      // Return an empty string for each frame so caller can still emit 1 row per iframe
+      for (let i = 0; i < frames.length; i++) out.push('');
+      return out;
+    }
+
+    // Build an array of captured response URLs for matching
+    const respUrls = [...respMap.keys()];
+
+    // For each Panopto iframe, find the best matching response URL and pick the first GUID from it
+    for (const f of frames) {
+      const fu = f.url();
+      // Best-match strategy: prefer response URLs that are substrings of the frame URL or vice versa.
+      // If none match, attempt to match by hostname + path root.
+      let bestMatch = null;
+      for (const ru of respUrls) {
+        if (fu && ru && (fu.includes(ru) || ru.includes(fu))) { bestMatch = ru; break; }
+      }
+      if (!bestMatch) {
+        // fallback: match by hostname
+        const tryHost = (u) => {
+          try { return new URL(u).host; } catch(e){ return null; }
+        };
+        const fHost = tryHost(fu);
+        if (fHost) {
+          bestMatch = respUrls.find(ru => tryHost(ru) === fHost) || null;
+        }
+      }
+
+      let chosenGuid = '';
+      if (bestMatch) {
+        const guids = respMap.get(bestMatch) || [];
+        if (guids.length) chosenGuid = guids[0]; // choose the first GUID for that iframe
+        console.log(`    frame ${fu} -> matched response ${bestMatch} -> guid:`, chosenGuid || '(none)');
+      } else {
+        console.log(`    frame ${fu} -> no matching panopto response found`);
+      }
+
+      out.push(chosenGuid); // may be empty string
+    }
+
+    console.log('    ▶ extractPanoptoSessionGuids (per-frame strict) ->', out.length, 'items:', out);
+    return out;
+  } catch (e) {
+    console.warn('⚠️ extractPanoptoSessionGuids error:', e);
+    // return blanks for each detected panopto frame (best-effort)
     try {
-      const bodyHtml = await f.content();
-      const matches = [...bodyHtml.matchAll(/Embed\.aspx[^"']*id=([0-9a-f-]{36})/ig)];
-      matches.forEach(m => guids.add(m[1]));
-    } catch (e) {
-      console.warn("Panopto iframe parse failed:", e.message);
+      const frames = page.frames().filter(f => /panopto/i.test(f.url()));
+      return frames.map(_ => '');
+    } catch (ee) {
+      return [];
     }
   }
-
-  return [...guids];
 }
+
 
 /**
  * Get active student IDs for a course
@@ -181,25 +232,42 @@ export async function getActiveStudentSet(courseId, canvasDomain, token) {
 export async function getStudentPageUsageWeb(page, courseId, userId, canvasDomain) {
   try {
     const url = `${canvasDomain}/courses/${courseId}/users/${userId}/usage.json`;
-    const res = await page.goto(url, { waitUntil: "domcontentloaded" });
-    if (!res) {
-      console.warn(`⚠️ no response from ${url}`);
+    console.log(`      -> fetch usage.json (non-navigating): ${url}`);
+    let res;
+    try {
+      res = await page.context().request.get(url);
+    } catch (err) {
+      console.warn(`      ⚠️ request.get failed for usage.json: ${err}`);
+      return new Set();
+    }
+    if (!res.ok()) {
+      console.warn(`      ⚠️ usage.json fetch bad status ${res.status()} for ${url}`);
       return new Set();
     }
     const body = await res.text();
-    //console.log(body);
+    console.log(`      -> usage.json length: ${body.length}`);
     const rows = JSON.parse(body);
 
+    // Return a Set of normalized page "names" viewed by this student
     const slugs = new Set();
-    for (const row of rows) {
-      if (row.asset_group_code?.includes(`course_${courseId}_wiki_page`)) {
-        const m = row.asset_code.match(/course_\d+_wiki_page_(.+)$/);
-        if (m) slugs.add(m[1]);
+
+    for (const item of rows) {
+      const aua = item.asset_user_access;
+      if (!aua) continue;
+
+      if (aua.asset_category === 'wiki' && aua.readable_name) {
+        // normalize to match Canvas page URLs, e.g. "District General Hospitals" → "district-general-hospitals"
+        const slug = aua.readable_name
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, '')   // remove punctuation
+          .trim()
+          .replace(/\s+/g, '-');      // spaces → hyphens
+        slugs.add(slug);
       }
     }
     return slugs;
   } catch (e) {
-    console.warn(`⚠️ usage.json fetch failed for student ${userId} in course ${courseId}:`, e.message);
+    console.warn(`⚠️ usage.json fetch failed for student ${userId} in course ${courseId}: ${e}`);
     return new Set();
   }
 }
