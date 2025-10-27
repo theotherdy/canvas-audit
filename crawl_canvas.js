@@ -84,18 +84,23 @@ async function listOtherAssignments(courseId) {
     !a.submission_types.includes('external_tool'));
 }
 
-async function submissionsPct(items, activeStudentIds) {
+async function submissionsPct(items, activeStudentIds, courseId) {
   let pctSum = 0;
 
   for (const it of items) {
+    // prefer per-item course_id if present, otherwise fall back to the supplied courseId
+    const cid = it.course_id || courseId;
+    if (!cid) {
+      console.warn('      ⚠️ submissionsPct: no course id available for assignment', it.id);
+      continue;
+    }
+
     const subs = await H.fetchAll(
-      `${CANVAS_DOMAIN}/api/v1/courses/${it.course_id}/assignments/${it.id}/submissions?per_page=100`
+      `${CANVAS_DOMAIN}/api/v1/courses/${cid}/assignments/${it.id}/submissions?per_page=100`
     );
 
     const subsFromActive = subs.filter(s => activeStudentIds.has(s.user_id));
-    const done = subsFromActive.filter(
-      s => s.workflow_state !== "unsubmitted"
-    ).length;
+    const done = subsFromActive.filter(s => s.workflow_state !== "unsubmitted").length;
 
     const denom = activeStudentIds.size || 1;
     pctSum += done / denom;
@@ -263,9 +268,9 @@ for (const courseId of COURSES) {
   const { classic, newQuiz } = await listQuizzes(courseId);
   const otherAss = await listOtherAssignments(courseId);
 
-  const classicPct = await submissionsPct(classic, activeStudents);
-  const newPct     = await submissionsPct(newQuiz, activeStudents);
-  const otherPct   = await submissionsPct(otherAss, activeStudents);
+  const classicPct = await submissionsPct(classic, activeStudents, courseId);
+  const newPct     = await submissionsPct(newQuiz, activeStudents, courseId);
+  const otherPct   = await submissionsPct(otherAss, activeStudents, courseId);
 
   // Use pages.length (the number of pages we actually processed) as the denominator.
   // For each page slug in pages, compute percentage of active students who viewed it.
