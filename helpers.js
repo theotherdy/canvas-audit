@@ -1,19 +1,16 @@
+// helpers.js
 import { chromium } from '@playwright/test';
 import { promises as fs } from 'node:fs';
+import fsSync from 'node:fs';
 import { URL } from 'node:url';
+import path from 'node:path';
+import crypto from 'node:crypto';
 import 'dotenv/config';
 import fetch from 'node-fetch';
 
 /* ---------- env & constants ------------------------ */
 const CANVAS  = process.env.CANVAS_DOMAIN.replace(/\/$/, '');
 const CV_PAT  = process.env.CANVAS_TOKEN;
-
-//const PANOPTO = process.env.PANOPTO_DOMAIN.replace(/\/$/, '');
-////const PAN_ID  = process.env.PANOPTO_CLIENT_ID;
-//const PAN_SEC = process.env.PANOPTO_CLIENT_SECRET;
-//const PAN_SC  = (process.env.PANOPTO_SCOPES ||
- //                'sessions.read viewers.read folders.read')
-  //               .split(/\s+/);
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
@@ -49,16 +46,6 @@ export async function ensureStorageState({
   await browser.close();
   console.log(`✅  Saved storage → ${storageFile}\n`);
 }
-
-/* ──────────────────────────────────── *
- * 1.  Build Cookie header for Panopto REST
- * ──────────────────────────────────── */
-/*export function panoptoCookieHeader(storageObj, panoptoDomain) {
-  return storageObj.cookies
-    .filter(c => c.domain.includes(new URL(panoptoDomain).hostname))
-    .map(c => `${c.name}=${c.value}`)
-    .join('; ');
-}*/
 
 /* ---------- generic Canvas fetch with 429-retry ------ */
 async function fetchJSON(url, opts = {}) {
@@ -99,48 +86,143 @@ export async function listCanvasPages(courseId) {
   const rows = await fetchAll(
     `${CANVAS}/api/v1/courses/${courseId}/pages?per_page=100`
   );
-  return rows.map(p => ({ title: p.title, url: p.url }));  // minimal
+  return rows;
 }
+
+/*------------------------------------------------------
+* START DISCUSSION METRICS
+*-------------------------------------------------------*/
+/**
+ * List discussion topics for a course (published + unpublished).
+ * Uses the Canvas API /discussion_topics endpoint (paginated).
+ *
+ * @param {string|number} courseId
+ * @returns {Promise<Array>}
+ */
+export async function listDiscussionTopics(courseId) {
+  return await fetchAll(`${CANVAS}/api/v1/courses/${courseId}/discussion_topics?per_page=100`);
+}
+
+/**
+ * Fetch entries (top-level posts) for a topic using the Canvas entries endpoint.
+ * Returns an array of entry objects; replies (if present) are inside each entry.replies
+ *
+ * @param {string|number} courseId
+ * @param {string|number} topicId
+ * @returns {Promise<Array>}
+ */
+export async function fetchDiscussionEntries(courseId, topicId) {
+  return await fetchAll(`${CANVAS}/api/v1/courses/${courseId}/discussion_topics/${topicId}/entries?per_page=100`);
+}
+
+/**
+ * Compute simplified discussion metrics:
+ * - noOfDiscussionTopics: number of published discussion topics
+ * - meanPctStudentsPosting: mean across topics of (unique active posters / active students) * 100
+ *
+ * Only attributes posters to IDs present in activeStudentSet (so it matches how you treat other metrics).
+ *
+ * @param {string|number} courseId
+ * @param {Set<number>} activeStudentSet - Set of active student user_ids
+ * @param {number} [concurrency=5] - concurrency for fetching topic entries
+ * @returns {Promise<{noOfDiscussionTopics:number, meanPctStudentsPosting:string}>}
+ */
+export async function discussionMetricsSimple(courseId, activeStudentSet = new Set(), concurrency = 5) {
+  // 1) list topics
+  const topics = await listDiscussionTopics(courseId);
+  // consider only published topics to match 'offer' semantics
+  const publishedTopics = topics.filter(t => t.published === true);
+  const noOfDiscussionTopics = publishedTopics.length;
+
+  if (!publishedTopics.length) {
+    return {
+      noOfDiscussionTopics: 0,
+      meanPctStudentsPosting: 0
+    };
+  }
+
+  // 2) prepare tasks to fetch entries for each topic
+  const tasks = publishedTopics.map(t => async () => {
+    try {
+      const entries = await fetchDiscussionEntries(courseId, t.id);
+      return { topicId: t.id, entries: Array.isArray(entries) ? entries : [] };
+    } catch (e) {
+      console.warn(`⚠️ discussionMetricsSimple: failed to fetch entries for topic ${t.id}: ${e.message}`);
+      return { topicId: t.id, entries: [] };
+    }
+  });
+
+  const results = await runWithConcurrency(tasks, concurrency);
+
+  // 3) for each topic compute percent of active students who posted at least once
+  const topicPercents = [];
+  for (const r of results) {
+    if (!r || !Array.isArray(r.entries)) {
+      topicPercents.push(0);
+      continue;
+    }
+
+    const posters = new Set();
+
+    for (const e of r.entries) {
+      const uid = e.user_id || (e.user && e.user.id) || null;
+      if (uid && activeStudentSet.has(uid)) posters.add(uid);
+
+      if (Array.isArray(e.replies) && e.replies.length) {
+        for (const rep of e.replies) {
+          const ruid = rep.user_id || (rep.user && rep.user.id) || null;
+          if (ruid && activeStudentSet.has(ruid)) posters.add(ruid);
+        }
+      }
+      // Some Canvas responses may not include full replies; we intentionally ignore those for this simple metric
+    }
+
+    const denom = activeStudentSet.size || 1;
+    const pct = (posters.size / denom) * 100;
+    topicPercents.push(pct);
+  }
+
+  const meanPct = topicPercents.length ? (topicPercents.reduce((a, b) => a + b, 0) / topicPercents.length) : 0;
+
+  return {
+    noOfDiscussionTopics,
+    meanPctStudentsPosting: Number(meanPct).toFixed(1) // string like other metrics (1 d.p.)
+  };
+}
+
+/*------------------------------------------------------
+* END DISCUSSION METRICS
+*-------------------------------------------------------*/
 
 /* GetPanopto SessionIDs from the loaded iFrame */
 export async function extractPanoptoSessionGuids(page) {
-  // Strict: only use GUIDs extracted earlier by the network response listener
-  // (stored in page._panoptoResponseMap by crawl_canvas.js respHandler).
   const out = [];
 
   try {
     const frames = page.frames().filter(f => /panopto/i.test(f.url()));
     console.log("🔎 Panopto frames (order):", frames.map(f => f.url()));
 
-    // If no frames, return empty array
     if (!frames.length) {
       console.log("    ▶ no panopto frames found.");
       return out;
     }
 
-    // If no response map exists, nothing to extract
     const respMap = page._panoptoResponseMap || new Map();
     if (!respMap.size) {
       console.log("    ▶ no panopto network responses captured (respMap empty).");
-      // Return an empty string for each frame so caller can still emit 1 row per iframe
       for (let i = 0; i < frames.length; i++) out.push('');
       return out;
     }
 
-    // Build an array of captured response URLs for matching
     const respUrls = [...respMap.keys()];
 
-    // For each Panopto iframe, find the best matching response URL and pick the first GUID from it
     for (const f of frames) {
       const fu = f.url();
-      // Best-match strategy: prefer response URLs that are substrings of the frame URL or vice versa.
-      // If none match, attempt to match by hostname + path root.
       let bestMatch = null;
       for (const ru of respUrls) {
         if (fu && ru && (fu.includes(ru) || ru.includes(fu))) { bestMatch = ru; break; }
       }
       if (!bestMatch) {
-        // fallback: match by hostname
         const tryHost = (u) => {
           try { return new URL(u).host; } catch(e){ return null; }
         };
@@ -153,20 +235,19 @@ export async function extractPanoptoSessionGuids(page) {
       let chosenGuid = '';
       if (bestMatch) {
         const guids = respMap.get(bestMatch) || [];
-        if (guids.length) chosenGuid = guids[0]; // choose the first GUID for that iframe
+        if (guids.length) chosenGuid = guids[0];
         console.log(`    frame ${fu} -> matched response ${bestMatch} -> guid:`, chosenGuid || '(none)');
       } else {
         console.log(`    frame ${fu} -> no matching panopto response found`);
       }
 
-      out.push(chosenGuid); // may be empty string
+      out.push(chosenGuid);
     }
 
     console.log('    ▶ extractPanoptoSessionGuids (per-frame strict) ->', out.length, 'items:', out);
     return out;
   } catch (e) {
     console.warn('⚠️ extractPanoptoSessionGuids error:', e);
-    // return blanks for each detected panopto frame (best-effort)
     try {
       const frames = page.frames().filter(f => /panopto/i.test(f.url()));
       return frames.map(_ => '');
@@ -175,7 +256,6 @@ export async function extractPanoptoSessionGuids(page) {
     }
   }
 }
-
 
 /**
  * Get active student IDs for a course
@@ -221,55 +301,200 @@ export async function getActiveStudentSet(courseId, canvasDomain, token) {
 }
 
 /**
- * Get wiki page slugs a student has viewed in a given course,
- * using the web endpoint /courses/:id/users/:id/usage.json
- *
- * @param {object} page Playwright Page (authenticated context)
- * @param {string|number} courseId
- * @param {string|number} userId
- * @returns {Promise<Set<string>>}
+ * Fetches all classic quizzes and assignments, then categorizes them
+ * into quizzes, ungraded surveys, and other assignments.
+ * @param {string} courseId
  */
-export async function getStudentPageUsageWeb(page, courseId, userId, canvasDomain) {
-  try {
-    const url = `${canvasDomain}/courses/${courseId}/users/${userId}/usage.json`;
-    console.log(`      -> fetch usage.json (non-navigating): ${url}`);
-    let res;
-    try {
-      res = await page.context().request.get(url);
-    } catch (err) {
-      console.warn(`      ⚠️ request.get failed for usage.json: ${err}`);
-      return new Set();
-    }
-    if (!res.ok()) {
-      console.warn(`      ⚠️ usage.json fetch bad status ${res.status()} for ${url}`);
-      return new Set();
-    }
-    const body = await res.text();
-    console.log(`      -> usage.json length: ${body.length}`);
-    const rows = JSON.parse(body);
+export async function categorizeAssignments(courseId) {
+  const assignments = await fetchAll(
+    `${CANVAS}/api/v1/courses/${courseId}/assignments?per_page=100`
+  );
+  const classicQuizzes = await fetchAll(
+    `${CANVAS}/api/v1/courses/${courseId}/quizzes?per_page=100`
+  );
 
-    // Return a Set of normalized page "names" viewed by this student
-    const slugs = new Set();
+  console.log(`\n--- Debugging categorizeAssignments for course ${courseId} ---`);
+  console.log(`  Fetched ${assignments.length} total assignments (from /assignments)`);
+  console.log(`  Fetched ${classicQuizzes.length} total classic quizzes (from /quizzes)`);
 
-    for (const item of rows) {
-      const aua = item.asset_user_access;
-      if (!aua) continue;
+  const allQuizzes = [];
+  const ungradedSurveys = [];
+  const otherAssignments = [];
 
-      if (aua.asset_category === 'wiki' && aua.readable_name) {
-        // normalize to match Canvas page URLs, e.g. "District General Hospitals" → "district-general-hospitals"
-        const slug = aua.readable_name
-          .toLowerCase()
-          .replace(/[^\w\s-]/g, '')   // remove punctuation
-          .trim()
-          .replace(/\s+/g, '-');      // spaces → hyphens
-        slugs.add(slug);
+  const classicQuizAssignmentIds = new Set();
+
+  console.log('\n  Processing Classic Quizzes (from /quizzes)...');
+  for (const q of classicQuizzes.filter(q => q.published)) {
+    if (q.quiz_type === 'survey' || q.quiz_type === 'graded_survey') {
+      console.log(`    [+] Pushing to ungradedSurveys: "${q.title}" (type: ${q.quiz_type})`);
+      ungradedSurveys.push(q);
+      if (q.assignment_id) {
+        classicQuizAssignmentIds.add(q.assignment_id);
+      }
+    } else {
+      console.log(`    [+] Pushing to allQuizzes: "${q.title}" (type: ${q.quiz_type})`);
+      allQuizzes.push(q);
+      if (q.assignment_id) {
+        classicQuizAssignmentIds.add(q.assignment_id);
       }
     }
-    return slugs;
-  } catch (e) {
-    console.warn(`⚠️ usage.json fetch failed for student ${userId} in course ${courseId}: ${e}`);
-    return new Set();
   }
+
+  console.log('\n  Processing Assignments (from /assignments)...');
+  for (const a of assignments.filter(a => a.published)) {
+    if (classicQuizAssignmentIds.has(a.id)) {
+      console.log(`    [S] Skipping Assignment: "${a.name}" (already processed as Classic Quiz)`);
+      continue;
+    }
+
+    const isNewQuiz = a.submission_types.includes('online_quiz') || a.is_quiz_lti_assignment === true;
+
+    if (isNewQuiz) {
+      if (a.grading_type === 'not_graded') {
+        console.log(`    [+] Pushing to ungradedSurveys: "${a.name}" (type: New Quiz [${a.submission_types.join(', ')}], not_graded)`);
+        ungradedSurveys.push(a);
+      } else {
+        console.log(`    [+] Pushing to allQuizzes: "${a.name}" (type: New Quiz [${a.submission_types.join(', ')} / LTI: ${a.is_quiz_lti_assignment}], graded)`);
+        allQuizzes.push(a);
+      }
+    } else if (
+      !a.submission_types.includes('discussion_topic') &&
+      !a.submission_types.includes('external_tool')
+    ) {
+      if (a.grading_type === 'not_graded') {
+        console.log(`    [+] Pushing to ungradedSurveys: "${a.name}" (type: Other Assignment, not_graded)`);
+        ungradedSurveys.push(a);
+      } else {
+        console.log(`    [+] Pushing to otherAssignments: "${a.name}" (type: Other Assignment, graded)`);
+        otherAssignments.push(a);
+      }
+    } else {
+      console.log(`    [?] Ignoring Assignment: "${a.name}" (type: ${a.submission_types.join(', ')})`);
+    }
+  }
+
+  console.log('\n  --- Final Counts ---');
+  console.log(`  noOfQuizzes: ${allQuizzes.length}`);
+  console.log(`  noOfUngradedSurvey: ${ungradedSurveys.length}`);
+  console.log(`  noOfOtherAssignments: ${otherAssignments.length}`);
+  console.log('---------------------------------------------------\n');
+
+  return { allQuizzes, ungradedSurveys, otherAssignments };
+}
+
+/**
+ * Get submission percentage for a list of assignments/quizzes
+ * @param {Array<object>} items - List of assignment or quiz objects
+ * @param {Set<number>} activeStudentIds
+ * @param {string} courseId - Fallback course ID
+ * @returns {Promise<string>}
+ */
+export async function submissionsPct(items, activeStudentIds, courseId) {
+  let pctSum = 0;
+  let processedItemCount = 0;
+
+  console.log(`\n--- Debugging submissionsPct (for ${items.length} items) ---`);
+  console.log(`  Total active students: ${activeStudentIds.size}`);
+
+  for (const it of items) {
+    const cid = it.course_id || courseId;
+    if (!cid) {
+      console.warn('      ⚠️ submissionsPct: no course id available for item', it.id);
+      continue;
+    }
+
+    const assignmentId = it.quiz_type ? it.assignment_id : it.id;
+    const itemName = it.title || it.name;
+
+    if (!assignmentId) {
+      console.log(`\n  Processing item: "${itemName}" (ID: null)`);
+      console.warn(`      ⚠️ submissionsPct: no assignment ID found for item "${itemName}" (type: ${it.quiz_type || 'assignment'}). Skipping.`);
+      continue;
+    }
+
+    console.log(`\n  Processing item: "${itemName}" (ID: ${assignmentId})`);
+
+    const subs = await fetchAll(
+      `${CANVAS}/api/v1/courses/${cid}/assignments/${assignmentId}/submissions?per_page=100`
+    );
+
+    const subsFromActive = subs.filter(s => activeStudentIds.has(s.user_id));
+    const done = subsFromActive.filter(s => s.workflow_state !== "unsubmitted").length;
+
+    const denom = activeStudentIds.size || 1;
+    const itemPct = done / denom;
+    pctSum += itemPct;
+    processedItemCount++;
+
+    console.log(`    Total submissions fetched: ${subs.length}`);
+    console.log(`    Submissions from active students: ${subsFromActive.length}`);
+    console.log(`    Active students who submitted ("done"): ${done}`);
+    console.log(`    Item percentage (done / active): ${(itemPct * 100).toFixed(1)}%`);
+  }
+
+  const finalAvgPct = processedItemCount ? ((pctSum / processedItemCount) * 100).toFixed(1) : 0;
+
+  console.log(`\n  --- Final Average Pct for this category ---`);
+  console.log(`  Total Pct Sum: ${pctSum * 100}`);
+  console.log(`  Items Processed (divisor): ${processedItemCount}`);
+  console.log(`  Average Pct: ${finalAvgPct}%`);
+  console.log('---------------------------------------------------\n');
+
+  return finalAvgPct;
+}
+
+/**
+ * Fetches all pages for a paginated JSON endpoint that requires Playwright auth.
+ * Uses the lightweight context.request API instead of opening new pages.
+ *
+ * @param {object} context - Playwright browser context (with auth state)
+ * @param {string} url - The base URL of the endpoint (without page param).
+ * @returns {Promise<Array>} - A single array containing results from all pages.
+ */
+export async function fetchAllPagesPlaywright(context, url) {
+  const allResults = [];
+  let pageNum = 1;
+  const baseUrl = new URL(url);
+
+  console.log(`  ... fetchAllPagesPlaywright (using context.request) starting for: ${baseUrl.pathname}`);
+
+  while (true) {
+    try {
+      baseUrl.searchParams.set('page', pageNum);
+      const pageUrl = baseUrl.href;
+
+      const response = await context.request.get(pageUrl);
+
+      if (!response.ok()) {
+        console.warn(`⚠️  fetchAllPagesPlaywright: Request failed for ${pageUrl} with status ${response.status()}`);
+        break;
+      }
+
+      const data = await response.json();
+
+      if (Array.isArray(data) && data.length === 0) {
+        console.log(`  ... fetchAllPagesPlaywright complete. Fetched ${pageNum - 1} pages.`);
+        break;
+      }
+
+      if (Array.isArray(data)) {
+        allResults.push(...data);
+      } else {
+        allResults.push(data);
+        console.log(`  ... fetchAllPagesPlaywright complete. Fetched non-array paged result.`);
+        break;
+      }
+
+      pageNum++;
+      await delay(100);
+
+    } catch (error) {
+       console.error(`❌  fetchAllPagesPlaywright: Error during fetch for ${baseUrl.pathname} (page ${pageNum})`, error);
+       break;
+    }
+  }
+
+  return allResults;
 }
 
 /**
@@ -300,7 +525,104 @@ export async function runWithConcurrency(tasks, limit = 5) {
   return results;
 }
 
+/* --------------------------------------------- 
+* START Helpers for run & resume functionality 
+* -----------------------------------------------*/
 
+/**
+ * Generate a short random hex id.
+ *
+ * @param {number} [n=6] Number of hex characters to return.
+ * @returns {string} Short hex id.
+ */
+export function shortId(n = 6) {
+  return crypto.randomBytes(Math.ceil(n / 2)).toString('hex').slice(0, n);
+}
 
+/**
+ * Atomically write `content` to `filePath` by writing to a temporary file and renaming.
+ *
+ * @param {string} filePath
+ * @param {string} content
+ * @returns {Promise<void>}
+ */
+export async function atomicWrite(filePath, content) {
+  const dir = path.dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+  const tmp = `${filePath}.tmp.${Date.now()}`;
+  await fs.writeFile(tmp, content, 'utf8');
+  await fs.rename(tmp, filePath);
+}
 
+/**
+ * Create or load a run manifest and return run metadata.
+ *
+ * If `runIdFromEnv` is `'0'` or falsy, a new runId will be generated:
+ *   run-<ISO-timestamp>-<shortId>
+ *
+ * @param {string} runIdFromEnv
+ * @param {Object} [opts]
+ * @param {string} [opts.baseDir] - base run directory, defaults to process.env.RUN_DIR or 'runs'
+ * @param {string} [opts.metricsFileBase] - base name for metrics file, defaults to process.env.CANVAS_METRICS_FILE or 'canvas_course_metrics'
+ * @returns {Promise<{runId:string, runDir:string, manifestPath:string, manifest:Object, metricsCsvPath:string}>}
+ */
+export async function loadOrCreateRun(runIdFromEnv, opts = {}) {
+  const baseDir = opts.baseDir || process.env.RUN_DIR || 'runs';
+  const metricsFileBase = opts.metricsFileBase || process.env.CANVAS_METRICS_FILE || 'canvas_course_metrics';
+  await fs.mkdir(baseDir, { recursive: true });
 
+  let runId = runIdFromEnv && runIdFromEnv !== '0' ? runIdFromEnv : null;
+  if (!runId) {
+    const iso = new Date().toISOString().replace(/[:.]/g, '-');
+    runId = `run-${iso}-${shortId(6)}`;
+  }
+
+  const runDir = path.join(baseDir, runId);
+  await fs.mkdir(runDir, { recursive: true });
+
+  const manifestPath = path.join(runDir, 'manifest.json');
+  let manifest = null;
+  try {
+    const raw = await fs.readFile(manifestPath, 'utf8');
+    manifest = JSON.parse(raw);
+  } catch (err) {
+    manifest = {
+      runId,
+      startedAt: new Date().toISOString(),
+      config: {},
+      courses: {}
+    };
+    await atomicWrite(manifestPath, JSON.stringify(manifest, null, 2));
+  }
+
+  const metricsCsvPath = path.join(runDir, `${metricsFileBase}-${runId}.csv`);
+  return { runId, runDir, manifestPath, manifest, metricsCsvPath };
+}
+
+/**
+ * Atomically write the manifest file to disk.
+ *
+ * @param {string} manifestPath
+ * @param {Object} manifest
+ * @returns {Promise<void>}
+ */
+export async function writeManifest(manifestPath, manifest) {
+  await atomicWrite(manifestPath, JSON.stringify(manifest, null, 2));
+}
+
+/**
+ * Append a CSV line to `csvPath` synchronously and ensure directory exists.
+ *
+ * @param {string} csvPath
+ * @param {string} line
+ * @returns {void}
+ */
+export function appendCsvLineAtomic(csvPath, line) {
+  const dir = path.dirname(csvPath);
+  fsSync.mkdirSync(dir, { recursive: true });
+  fsSync.appendFileSync(csvPath, line + '\n', 'utf8');
+}
+
+/* --------------------------------------------- 
+* END Helpers for run & resume functionality 
+* -----------------------------------------------*/
