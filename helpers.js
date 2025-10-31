@@ -11,6 +11,8 @@ import fetch from 'node-fetch';
 /* ---------- env & constants ------------------------ */
 const CANVAS  = process.env.CANVAS_DOMAIN.replace(/\/$/, '');
 const CV_PAT  = process.env.CANVAS_TOKEN;
+// helpers.js — add after existing env/constants
+export const PANOPTO_DELETED_TOKEN = process.env.PANOPTO_DELETED_TOKEN || '__PANOPTO_DELETED__';
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
@@ -200,7 +202,7 @@ export async function extractPanoptoSessionGuids(page) {
 
   try {
     const frames = page.frames().filter(f => /panopto/i.test(f.url()));
-    console.log("🔎 Panopto frames (order):", frames.map(f => f.url()));
+    //console.log("🔎 Panopto frames (order):", frames.map(f => f.url()));
 
     if (!frames.length) {
       console.log("    ▶ no panopto frames found.");
@@ -236,7 +238,7 @@ export async function extractPanoptoSessionGuids(page) {
       if (bestMatch) {
         const guids = respMap.get(bestMatch) || [];
         if (guids.length) chosenGuid = guids[0];
-        console.log(`    frame ${fu} -> matched response ${bestMatch} -> guid:`, chosenGuid || '(none)');
+        //console.log(`    frame ${fu} -> matched response ${bestMatch} -> guid:`, chosenGuid || '(none)');
       } else {
         console.log(`    frame ${fu} -> no matching panopto response found`);
       }
@@ -256,6 +258,110 @@ export async function extractPanoptoSessionGuids(page) {
     }
   }
 }
+
+//manages retries to get Panopto session_ids if not found initially.
+export async function extractPanoptoWithBoundedRetries(page, opts = {}) {
+  // opts: { inPlaceAttempts = 3, baseWaitMs = 3000, pageOpTimeoutMs = 15000, finalReload = true }
+  const inPlaceAttempts = Number.isInteger(opts.inPlaceAttempts) ? opts.inPlaceAttempts : 3;
+  const baseWaitMs = opts.baseWaitMs || 3000;
+  const pageOpTimeoutMs = opts.pageOpTimeoutMs || 15000;
+  const finalReload = opts.finalReload === undefined ? true : !!opts.finalReload;
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // --- EARLY EXIT: if there are no panopto frames on the page, don't attempt retries ---
+  try {
+    const frames = page.frames().filter(f => /panopto/i.test(f.url()));
+    if (!frames || frames.length === 0) {
+      // No frames -> immediate, cheap return. Caller should treat attempts==0 as "no frames".
+      return { guidsPerFrame: [], attempts: 0, reloaded: false, deletedDetected: false };
+    }
+  } catch (err) {
+    // If frames call fails for some reason, fall through to normal behavior (defensive)
+  }
+
+  let lastGuids = [];
+  let attempts = 0;
+  let reloaded = false;
+  let deletedDetected = false;
+
+  // Only call extractPanoptoSessionGuids when we know frames exist.
+  for (let i = 0; i < inPlaceAttempts; i++) {
+    attempts++;
+    try {
+      const guids = await Promise.race([
+        extractPanoptoSessionGuids(page),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('extract timeout')), pageOpTimeoutMs))
+      ]);
+      lastGuids = Array.isArray(guids) ? guids : [];
+
+      // if deleted token present, short-circuit
+      if (lastGuids.some(g => g === PANOPTO_DELETED_TOKEN)) {
+        deletedDetected = true;
+        return { guidsPerFrame: lastGuids, attempts, reloaded, deletedDetected };
+      }
+
+      // success if every frame has a non-empty guid
+      const allFound = lastGuids.length > 0 && lastGuids.every(g => typeof g === 'string' && g.trim() !== '');
+      if (allFound) return { guidsPerFrame: lastGuids, attempts, reloaded, deletedDetected };
+
+    } catch (err) {
+      // treat as a blank extract and continue to retry
+      lastGuids = lastGuids || [];
+    }
+
+    // If not last in-place attempt, wait progressive backoff
+    if (i < inPlaceAttempts - 1) {
+      const waitMs = baseWaitMs * (i + 1); // 1x, 2x, 3x
+      await sleep(waitMs);
+    }
+  }
+
+  // After in-place attempts, single extra wait then one final in-place extraction
+  attempts++;
+  try {
+    await sleep(baseWaitMs);
+    const finalInPlace = await Promise.race([
+      extractPanoptoSessionGuids(page),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('extract timeout')), pageOpTimeoutMs))
+    ]);
+    lastGuids = Array.isArray(finalInPlace) ? finalInPlace : lastGuids;
+
+    if (lastGuids.some(g => g === PANOPTO_DELETED_TOKEN)) {
+      deletedDetected = true;
+      return { guidsPerFrame: lastGuids, attempts, reloaded, deletedDetected };
+    }
+
+    const allFound = lastGuids.length > 0 && lastGuids.every(g => typeof g === 'string' && g.trim() !== '');
+    if (allFound) return { guidsPerFrame: lastGuids, attempts, reloaded, deletedDetected };
+  } catch (err) {
+    // continue to final reload if configured
+  }
+
+  // Single reload fallback (bounded) — only one reload and one final extract
+  if (finalReload) {
+    try {
+      reloaded = true;
+      await page.reload({ waitUntil: 'load', timeout: 60000 }).catch(()=>{});
+      // allow a short settling time
+      await sleep(baseWaitMs);
+      attempts++;
+      const postReload = await Promise.race([
+        extractPanoptoSessionGuids(page),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('extract timeout')), pageOpTimeoutMs))
+      ]);
+      lastGuids = Array.isArray(postReload) ? postReload : lastGuids;
+      if (lastGuids.some(g => g === PANOPTO_DELETED_TOKEN)) {
+        deletedDetected = true;
+      }
+    } catch (err) {
+      // swallow: we give up after this one final attempt
+    }
+  }
+
+  return { guidsPerFrame: lastGuids || [], attempts, reloaded, deletedDetected };
+}
+
 
 /**
  * Get active student IDs for a course

@@ -17,7 +17,13 @@ const {
   SINGLE_PAGE,                 // optional single page slug to audit
   CONTINUE_WITH_RUN_ID = '0',  // '0' => start a new run; otherwise reuse this runId
   RUN_DIR = 'runs',            // base run directory
-  CANVAS_METRICS_FILE = 'canvas_course_metrics' // base name - run id will be appended
+  CANVAS_METRICS_FILE = 'canvas_course_metrics', // base name - run id will be appended
+  NAV_TIMEOUT_MS = '60000',
+  PAGE_OPERATION_TIMEOUT_MS = '15000',
+  PAGE_INITIAL_WAIT_MS = '3000',
+  BASE_WAIT_MS = '3000',
+  MAX_PAGE_ATTEMPTS = '4',
+  FINAL_RELOAD = 'true'
 } = process.env;
 
 if (!CANVAS_DOMAIN || !CANVAS_TOKEN || !COURSE_IDS)
@@ -26,6 +32,27 @@ if (!CANVAS_DOMAIN || !CANVAS_TOKEN || !COURSE_IDS)
 const COURSES = COURSE_IDS.split(',').map(s => s.trim());
 const PAGE_LIMIT_N = +PAGE_LIMIT;
 const SINGLE_PAGE_SLUG = SINGLE_PAGE && SINGLE_PAGE.trim();  
+
+// === Canonical CSV header (single source of truth for CSV column order) ===
+const HEADERS = [
+  'courseId','courseName','studentsCount','pagesPublished',
+  'meanPercentViewed','medianPercentViewed','pctPagesViewedOnce',
+  'pagesWithPanopto','panoptoVideos',
+  'pagesWithYouTube','youTubeVideos','pagesWithH5P','h5pItems',
+  'pagesWithMSForms','msForms',
+  'pagesWithCSlide','cslideItems',
+  'noOfQuizzes','quizzesSubmittedPct','noOfUngradedSurvey','ungradedSurveyPct',
+  'noOfOtherAssignments','otherAssignmentsSubmittedPct','noOfDiscussionTopics',
+  'meanPctStudentsPosting','pagesFailed','runId','timestamp'
+];
+
+const NAV_TIMEOUT = Number.parseInt(NAV_TIMEOUT_MS, 10) || 60000;
+const PAGE_OP_TIMEOUT = Number.parseInt(PAGE_OPERATION_TIMEOUT_MS, 10) || 15000;
+const PAGE_INITIAL_WAIT = Number.parseInt(PAGE_INITIAL_WAIT_MS, 10) || 3000;
+const BASE_WAIT = Number.parseInt(BASE_WAIT_MS, 10) || 3000;
+const MAX_PAGE_ATTEMPTS_N = Number.parseInt(MAX_PAGE_ATTEMPTS, 10) || 4;
+const FINAL_RELOAD_BOOL = /^(1|true|yes)$/i.test(String(FINAL_RELOAD));
+
 
 /* ─── main ----------------------------------------------------------------------------------------------- */
 await H.ensureStorageState({ canvasDomain: CANVAS_DOMAIN, storageFile: STORAGE_FILE });
@@ -54,17 +81,25 @@ console.log(`Run dir: ${runDir}`);
 console.log(`Manifest: ${manifestPath}`);
 console.log(`Metrics CSV for run: ${metricsCsvPath}`);
 
-// Ensure CSV header exists (single-header per run)
-if (!fs.existsSync) {
-  // old Node versions: fs.existsSync is on require('fs'), but 'fs' here is promises – use helpers to create header if file missing:
+//Used to call extraction or other per-page activities so they fail fast and let your retry loop try again or give up gracefully.
+function withTimeout(promise, ms, label = 'operation') {
+  let id;
+  const timeout = new Promise((_, reject) => {
+    id = setTimeout(() => reject(new Error(`Timed out after ${ms}ms (${label})`)), ms);
+  });
+  return Promise.race([
+    Promise.resolve(promise).then(res => { clearTimeout(id); return res; }),
+    timeout
+  ]);
 }
+
+// Ensure CSV header exists (single-header per run)
 try {
-  // If metricsCsvPath doesn't exist, append header
   try {
     await fs.access(metricsCsvPath);
   } catch (_) {
-    const header = ['courseId','courseName','studentsCount','pagesPublished','pagesWithPanopto','panoptoVideos','pagesWithH5P','h5pItems','meanPercentViewed','medianPercentViewed','pctPagesViewedOnce','noOfQuizzes','quizzesSubmittedPct','noOfUngradedSurvey','ungradedSurveyPct','noOfOtherAssignments','otherAssignmentsSubmittedPct','noOfDiscussionTopics','meanPctStudentsPosting','pagesFailed','runId','timestamp'].join(',');
-    H.appendCsvLineAtomic(metricsCsvPath, header);
+    // write canonical header (one line) if file missing
+    H.appendCsvLineAtomic(metricsCsvPath, HEADERS.join(','));
   }
 } catch (e) {
   console.warn('Warning while ensuring metrics CSV header:', e.message);
@@ -238,6 +273,10 @@ for (const courseId of COURSES) {
     
     let panoPageCount = 0, panoEmbeds = 0;
     let h5pPageCount  = 0, h5pEmbeds  = 0;
+    let ytPageCount   = 0, ytEmbeds   = 0; 
+    let msFormsPageCount = 0, msFormsEmbeds = 0;
+    let cslidePageCount = 0, cslideEmbeds = 0;
+
     const sessionSet = new Set();
     
     let pagesToScan = [...allPagesInCourse];
@@ -275,56 +314,184 @@ for (const courseId of COURSES) {
 
         const url = `${CANVAS_DOMAIN}/courses/${courseId}/pages/${p.url}`;
         
-        const reqs = [];
-        const h = r => reqs.push(r.url());
-        const panoptoResponseUrls = new Set();
-        page._panoptoResponseMap = page._panoptoResponseMap || new Map();
+        //const reqs = [];
+        //const h = r => reqs.push(r.url());
+        //const panoptoResponseUrls = new Set();
+        //page._panoptoResponseMap = page._panoptoResponseMap || new Map();
         
         const guidPattern = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
         const ogMetaRegex = new RegExp(`<meta[^>]*property=["']og:url["'][^>]*content=["'][^"']*id=(${guidPattern})[^"']*["'][^>]*>`, 'i');
         const formActionRegex = new RegExp(`<form[^>]*action=["'][^"']*id=(${guidPattern})[^"']*["'][^>]*>`, 'ig');
         
-        const respHandler = async (res) => {
-          try {
-            const u = res.url();
-            if (!/panopto|embed\.aspx|Viewer\.aspx|EmbedSession/i.test(u)) return;
-            if (panoptoResponseUrls.has(u)) return;
-            panoptoResponseUrls.add(u);
-            let text = '';
-            try { text = await res.text(); } catch (e) { return; }
-            const found = new Set();
-            const ogMatch = text.match(ogMetaRegex);
-            if (ogMatch && ogMatch[1]) found.add(ogMatch[1]);
-            let m;
-            while ((m = formActionRegex.exec(text)) !== null) {
-              if (m[1]) found.add(m[1]);
-            }
-            if (found.size) {
-              page._panoptoResponseMap.set(u, [...found]);
-            } else {
-              page._panoptoResponseMap.set(u, []);
-            }
-          } catch (err) {
-            console.error('    error in panopto response handler', err);
-          }
-        };
-
         try {
           console.log(`      (${i + 1}/${pagesToScan.length}) Visiting: ${p.url} (Attempt ${pass + 1})`);
           
+          // START: per-page bounded progressive-wait + extraction loop
+
+          page._panoptoResponseMap = page._panoptoResponseMap || new Map();
+          const reqs = [];
+          const h = r => reqs.push(r.url());
+          const panoptoResponseUrls = new Set();
+
+          // --- panopto response handler (must be defined AFTER panoptoResponseUrls) ---
+          const respHandler = async (res) => {
+            try {
+              const u = res.url();
+              if (!/panopto|embed\.aspx|Viewer\.aspx|EmbedSession/i.test(u)) return;
+              if (panoptoResponseUrls.has(u)) return;
+              panoptoResponseUrls.add(u);
+              let text = '';
+              try { text = await res.text(); } catch (e) { return; }
+
+              // Check for the "deleted" message in the iframe's response
+              if (text.includes('This video is no longer available.')) {
+                // Use the special token from helpers.js
+                page._panoptoResponseMap.set(u, [H.PANOPTO_DELETED_TOKEN]);
+                return; // Stop processing this response
+              }
+              
+              const found = new Set();
+              const ogMatch = text.match(ogMetaRegex);
+              if (ogMatch && ogMatch[1]) found.add(ogMatch[1]);
+              let m;
+              while ((m = formActionRegex.exec(text)) !== null) {
+                if (m[1]) found.add(m[1]);
+              }
+              if (found.size) {
+                page._panoptoResponseMap.set(u, [...found]);
+              } else {
+                page._panoptoResponseMap.set(u, []);
+              }
+            } catch (err) {
+              // defensive: ensure this handler never throws to the top-level event emitter
+              console.error('    error in panopto response handler', err && err.message ? err.message : err);
+            }
+          };
+
           page.on('request', h);
           page.on('response', respHandler);
-          await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
-          try { await page.waitForTimeout(800); } catch(e){} 
-          page.off('request', h);
-          page.off('response', respHandler);
 
+          // navigate with env-backed NAV_TIMEOUT (ensure NAV_TIMEOUT is defined earlier)
+          try {
+            await withTimeout(page.goto(url, { waitUntil: 'load', timeout: NAV_TIMEOUT }), NAV_TIMEOUT + 2000, 'page.goto');
+          } catch (navErr) {
+            // propagate to existing catch handling below (so the outer retry machinery can catch it)
+            page.off('request', h);
+            page.off('response', respHandler);
+            throw navErr;
+          }
+
+          // initial short wait (bounded by PAGE_OP_TIMEOUT)
+          try { await withTimeout(page.waitForTimeout(PAGE_INITIAL_WAIT), PAGE_OP_TIMEOUT, 'initial-wait'); } catch(e){ /* ignore initial wait timeout */ }
+
+          const boundedOpts = {
+            inPlaceAttempts: MAX_PAGE_ATTEMPTS_N,                 // three in-place tries (you asked for 3)
+            baseWaitMs: BASE_WAIT,              // uses your existing BASE_WAIT
+            pageOpTimeoutMs: PAGE_OP_TIMEOUT,   // keep page op timeout consistent with file top-level constants
+            finalReload: FINAL_RELOAD_BOOL      // follow existing env-driven behavior
+          };
+
+          const boundedResult = await H.extractPanoptoWithBoundedRetries(page, boundedOpts);
+          let panoGuidsPerFrame = Array.isArray(boundedResult.guidsPerFrame) ? boundedResult.guidsPerFrame : [];
+          const attemptsMade = boundedResult.attempts || 0;
+          const didReload = !!boundedResult.reloaded;
+          const deletedDetected = !!boundedResult.deletedDetected;
+
+          // --- Panopto extraction outcome handling (updated, replaces old if/else) ---
+          if (attemptsMade === 0) {
+            // No Panopto frames found on this page — detach handlers and log once.
+            page.off('request', h);
+            page.off('response', respHandler);
+            console.log('    ▶ no panopto frames found.');
+            panoGuidsPerFrame = []; // ensure it's empty so nothing gets counted later
+          } else {
+            // There were Panopto frames (attemptsMade > 0). Handle deleted / blank / success cases.
+
+            // Case A: Deleted marker detected — treat as definitive and record once
+            if (deletedDetected) {
+              console.warn(`        ⚠️  Detected Panopto deleted page — aborting retries for ${p.url || 'unknown-url'}.`);
+              manifest.panoptoNoGuidPages = manifest.panoptoNoGuidPages || [];
+              manifest.panoptoNoGuidPages.push({
+                url: p.url || (p && p.pageUrl) || 'unknown-url',
+                reason: 'panopto_deleted',
+                attempts: attemptsMade,
+                reloaded: didReload,
+                detectedAt: new Date().toISOString(),
+                courseId
+              });
+              try { await H.writeManifest(manifestPath, manifest); } catch (mw) {
+                console.warn('   ⚠️  Could not persist manifest for panopto-deleted page:', mw.message);
+              }
+              page.off('request', h);
+              page.off('response', respHandler);
+              continue; // skip this page entirely
+            }
+
+            // Case B: Frames exist but all GUIDs blank — record and skip
+            const framesFound = page.frames().filter(f => /panopto/i.test(f.url()));
+            const allBlankGuids =
+              framesFound.length > 0 &&
+              (panoGuidsPerFrame.length === 0 || panoGuidsPerFrame.every(g => !g || g.trim() === ''));
+            if (framesFound.length > 0 && allBlankGuids) {
+              console.warn(`        ⚠️  Panopto GUIDs still empty after bounded attempts for ${p.url}. Recording in manifest.`);
+              manifest.panoptoNoGuidPages = manifest.panoptoNoGuidPages || [];
+              manifest.panoptoNoGuidPages.push({
+                url: p.url || (p && p.pageUrl) || 'unknown-url',
+                reason: 'no_guid_after_attempts',
+                attempts: attemptsMade,
+                finalReloadAttempted: didReload,
+                recordedAt: new Date().toISOString(),
+                courseId
+              });
+              try { await H.writeManifest(manifestPath, manifest); } catch (mw) {
+                console.warn('   ⚠️  Could not persist manifest for no-guid page:', mw.message);
+              }
+              page.off('request', h);
+              page.off('response', respHandler);
+              continue; // move to next page
+            }
+
+            // Case C: One or more GUIDs found — push only non-empty GUIDs
+            if (Array.isArray(panoGuidsPerFrame) && panoGuidsPerFrame.length > 0) {
+              const nonEmptyGuids = panoGuidsPerFrame.filter(g => g && String(g).trim() !== '');
+              if (nonEmptyGuids.length > 0) {
+                panoPageCount++;
+                panoEmbeds += nonEmptyGuids.length;
+                nonEmptyGuids.forEach(g => sessionSet.add(g));
+                for (const guid of nonEmptyGuids) {
+                  SESSION_ROWS.push({ courseId, sessionId: guid });
+                }
+              } else {
+                console.warn(`        ⚠️  All extracted GUIDs were empty for ${p.url} despite frames being present.`);
+              }
+            } else {
+              console.warn(`        ⚠️  Unexpected: attemptsMade=${attemptsMade} but panoGuidsPerFrame missing or not an array for ${p.url}`);
+            }
+
+            // Always detach handlers before moving on
+            page.off('request', h);
+            page.off('response', respHandler);
+          }
+
+          // --- record / log results (keeps your existing behavior) ---
           const html = await page.content();
+          // Count H5Ps 
           const h5pRegex = /<iframe[^>]*src="[^"]*h5p\.com(?:%2F|\/)+content(?:%2F|\/)+([0-9]+)[^"]*"/ig;
           const h5p  = [...html.matchAll(h5pRegex)];
-          const panoGuidsPerFrame = await H.extractPanoptoSessionGuids(page);
+          // Count YouTube iframes
+          const ytRegex = /<iframe[^>]*src="[^"]*(youtube\.com\/embed\/|youtube-nocookie\.com\/embed\/|yout-ube\.com\/embed\/)[^"]*"/ig;
+          const ytMatches = [...html.matchAll(ytRegex)];
+          const ytCount = ytMatches.length;
+          // Count Microsoft Forms embedded via iframe
+          const msFormsRegex = /<iframe[^>]*src="[^"]*(?:forms\.office\.com|forms\.microsoft\.com)[^"]*"/ig;
+          const msFormsMatches = [...html.matchAll(msFormsRegex)];
+          const msFormsCount = msFormsMatches.length;
+          // Count CSlide iframes // <-- ADD THIS BLOCK
+          const cslideRegex = /<iframe[^>]*src="[^"]*learntech\.medsci\.ox\.ac\.uk\/cslide\/[^"]*"/ig;
+          const cslideMatches = [...html.matchAll(cslideRegex)];
+          const cslideCount = cslideMatches.length;
 
-          if (panoGuidsPerFrame.length) {
+          /*if (panoGuidsPerFrame.length) {
             panoPageCount++;
             panoEmbeds += panoGuidsPerFrame.length;
             panoGuidsPerFrame.forEach(g => { if (g) sessionSet.add(g); });
@@ -332,11 +499,14 @@ for (const courseId of COURSES) {
               const guid = panoGuidsPerFrame[j] || '';
               SESSION_ROWS.push({ courseId, sessionId: guid });
             }
-          }
+          }*/
 
-          console.log(`        Panopto: ${panoGuidsPerFrame.length}, H5P: ${h5p.length}`);
+          console.log(`        Panopto: ${panoGuidsPerFrame.length}, H5P: ${h5p.length}, YouTube: ${ytCount}, MSForms: ${msFormsCount}, CSlide: ${cslideCount}`);
+
           if (h5p.length)  { h5pPageCount++;  h5pEmbeds  += h5p.length;  }
-          
+          if (ytCount > 0) { ytPageCount++;   ytEmbeds   += ytCount;   }
+          if (msFormsCount > 0) {msFormsPageCount++; msFormsEmbeds += msFormsCount;} 
+          if (cslideCount > 0) { cslidePageCount++; cslideEmbeds += cslideCount; }         
         } catch (err) {
           if (err.message.includes('Target page, context or browser has been closed')) {
               console.error(`   ❌  FATAL ERROR: Browser context closed unexpectedly. Stopping scan for this course.`);
@@ -458,6 +628,12 @@ for (const courseId of COURSES) {
       panoptoVideos: panoEmbeds,     
       pagesWithH5P: h5pPageCount,    
       h5pItems: h5pEmbeds,
+      pagesWithMSForms: msFormsPageCount,  
+      msForms: msFormsEmbeds,    
+      pagesWithCSlide: cslidePageCount, 
+      cslideItems: cslideEmbeds,          
+      pagesWithYouTube: ytPageCount, 
+      youTubeVideos: ytEmbeds,       
       noOfDiscussionTopics: noOfDiscussionTopics,
       meanPctStudentsPosting: meanPctStudentsPosting,
       pagesFailed: pagesFailed
@@ -468,31 +644,20 @@ for (const courseId of COURSES) {
     lastMetric.runId = runId;
     lastMetric.timestamp = (new Date()).toISOString();
 
-    const csvCols = [
-      lastMetric.courseId,
-      `"${(lastMetric.courseName || '').replace(/"/g, '""')}"`,
-      lastMetric.students,
-      lastMetric.pagesPublished,
-      lastMetric.pagesWithPanopto,
-      lastMetric.panoptoVideos,
-      lastMetric.pagesWithH5P,
-      lastMetric.h5pItems,
-      lastMetric.meanPercentViewed,
-      lastMetric.medianPercentViewed,
-      lastMetric.pctPagesViewedOnce,
-      lastMetric.noOfQuizzes,
-      lastMetric.quizzesSubmittedPct,
-      lastMetric.noOfUngradedSurvey,
-      lastMetric.ungradedSurveyPct,
-      lastMetric.noOfOtherAssignments,
-      lastMetric.otherAssignmentsSubmittedPct,
-      lastMetric.noOfDiscussionTopics || 0,
-      lastMetric.meanPctStudentsPosting || 0,
-      lastMetric.pagesFailed || pagesFailed || 0,
-      runId,
-      lastMetric.timestamp
-    ];
-    const csvLine = csvCols.join(',');
+    // Ensure lastMetric has any aliased/derived keys expected by HEADERS
+    // (some parts of the code used `students` — we normalise to studentsCount)
+    lastMetric.studentsCount = lastMetric.studentsCount ?? lastMetric.students ?? students;
+    lastMetric.pagesPublished = lastMetric.pagesPublished ?? lastMetric.pagesPublished ?? lastMetric.pagesPublished; // noop but explicit
+
+    // Build row using canonical HEADERS (handles quoting for courseName)
+    const csvLine = HEADERS.map(key => {
+      if (key === 'courseName') {
+        return `"${(lastMetric.courseName || '').replace(/"/g, '""')}"`;
+      }
+      if (key === 'runId') return runId;
+      const v = lastMetric[key];
+      return (v === undefined || v === null) ? '' : String(v);
+    }).join(',');
 
     try {
       H.appendCsvLineAtomic(metricsCsvPath, csvLine);
@@ -533,8 +698,21 @@ await browser.close();
 // Write panopto session ids into run dir CSV
 try {
   const panoptoCsvPath = path.join(runDir, `panopto_session_ids-${runId}.csv`);
-  await fs.writeFile(panoptoCsvPath, stringify(SESSION_ROWS, { header: true }));
-  console.log(`\n✅  appended course metrics to ${metricsCsvPath} and wrote panopto_session_ids-${runId}.csv in ${runDir}`);
+
+  // Create a Set of unique strings (e.g., "1234|guid-abc")
+  const uniqueSessionStrings = new Set(
+    SESSION_ROWS.map(row => `${row.courseId}|${row.sessionId}`)
+  );
+
+  // Map the unique strings back to { courseId, sessionId } objects
+  const uniqueSessionRows = [...uniqueSessionStrings].map(s => {
+    const [courseId, sessionId] = s.split('|');
+    return { courseId, sessionId };
+  });
+  
+  // Write the de-duplicated array to the CSV
+  await fs.writeFile(panoptoCsvPath, stringify(uniqueSessionRows, { header: true }));
+  console.log(`\n✅  appended course metrics to ${metricsCsvPath} and wrote ${uniqueSessionRows.length} unique panopto_session_ids in ${runDir}`);
 } catch (e) {
   console.warn('Warning: could not write panopto session CSV for run:', e.message);
 }

@@ -1,0 +1,82 @@
+{
+  "runId": "run-2025-10-31T09-13-45-908Z-e03c9c",
+  "startedAt": "2025-10-31T09:13:45.910Z",
+  "config": {
+    "courses": [
+      "275251"
+    ]
+  },
+  "courses": {
+    "275251": {
+      "status": "done",
+      "startedAt": "2025-10-31T09:13:45.917Z",
+      "finishedAt": "2025-10-31T09:26:09.110Z",
+      "lastUpdated": "2025-10-31T09:26:09.110Z",
+      "error": null
+    }
+  },
+  "failedPages": [],
+  "panoptoNoGuidPages": [
+    {
+      "url": "dr-limb-vasculature-prosection-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T09:19:44.326Z",
+      "courseId": "275251"
+    },
+    {
+      "url": "dr-respiratory-system-prosection-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T09:19:47.975Z",
+      "courseId": "275251"
+    },
+    {
+      "url": "dr-upper-respiratory-and-gi-tract-prosection-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T09:19:51.599Z",
+      "courseId": "275251"
+    },
+    {
+      "url": "heart-and-mediastinum-dr-and-living-stations-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T09:20:46.556Z",
+      "courseId": "275251"
+    },
+    {
+      "url": "living-anatomy-respiratory-system",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T09:21:36.542Z",
+      "courseId": "275251"
+    },
+    {
+      "url": "living-anatomy-vasculature-of-limbs",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T09:21:40.151Z",
+      "courseId": "275251"
+    },
+    {
+      "url": "upper-respiratory-and-gi-tract-living-anatomy",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T09:24:01.986Z",
+      "courseId": "275251"
+    }
+  ],
+  "summary": {
+    "pagesFailed": 0,
+    "failedPagesCount": 0,
+    "finishedAt": "2025-10-31T09:26:09.112Z"
+  }
+}
