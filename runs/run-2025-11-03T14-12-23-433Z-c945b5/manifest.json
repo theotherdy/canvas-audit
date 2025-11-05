@@ -1,0 +1,82 @@
+{
+  "runId": "run-2025-11-03T14-12-23-433Z-c945b5",
+  "startedAt": "2025-11-03T14:12:23.455Z",
+  "config": {
+    "courses": [
+      "275248",
+      "274795",
+      "281625",
+      "278459",
+      "266847",
+      "293362"
+    ]
+  },
+  "courses": {
+    "266847": {
+      "status": "done",
+      "startedAt": "2025-11-03T14:22:03.683Z",
+      "finishedAt": "2025-11-03T14:53:09.059Z",
+      "lastUpdated": "2025-11-03T14:53:09.059Z",
+      "error": null
+    },
+    "274795": {
+      "status": "done",
+      "startedAt": "2025-11-03T14:14:02.727Z",
+      "finishedAt": "2025-11-03T14:16:32.331Z",
+      "lastUpdated": "2025-11-03T14:16:32.331Z",
+      "error": null
+    },
+    "275248": {
+      "status": "done",
+      "startedAt": "2025-11-03T14:12:23.467Z",
+      "finishedAt": "2025-11-03T14:14:02.701Z",
+      "lastUpdated": "2025-11-03T14:14:02.701Z",
+      "error": null
+    },
+    "278459": {
+      "status": "done",
+      "startedAt": "2025-11-03T14:17:26.052Z",
+      "finishedAt": "2025-11-03T14:22:03.674Z",
+      "lastUpdated": "2025-11-03T14:22:03.674Z",
+      "error": null
+    },
+    "281625": {
+      "status": "done",
+      "startedAt": "2025-11-03T14:16:32.497Z",
+      "finishedAt": "2025-11-03T14:17:26.036Z",
+      "lastUpdated": "2025-11-03T14:17:26.036Z",
+      "error": null
+    },
+    "293362": {
+      "status": "done",
+      "startedAt": "2025-11-03T14:53:09.072Z",
+      "finishedAt": "2025-11-03T14:56:18.250Z",
+      "lastUpdated": "2025-11-03T14:56:18.250Z",
+      "error": null
+    }
+  },
+  "failedPages": [],
+  "panoptoNoGuidPages": [
+    {
+      "url": "remote-consultations-overview-of-influences",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T14:20:25.615Z",
+      "courseId": "278459"
+    },
+    {
+      "url": "topic-1-introduction-to-medical-law-and-negligence-2",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T14:21:02.501Z",
+      "courseId": "278459"
+    }
+  ],
+  "summary": {
+    "pagesFailed": 0,
+    "failedPagesCount": 0,
+    "finishedAt": "2025-11-03T14:56:18.322Z"
+  }
+}

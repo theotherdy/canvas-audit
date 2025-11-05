@@ -1,0 +1,186 @@
+{
+  "runId": "run-2025-11-03T15-01-39-678Z-d60d70",
+  "startedAt": "2025-11-03T15:01:39.682Z",
+  "config": {
+    "courses": [
+      "274131",
+      "278141",
+      "293305",
+      "274556",
+      "271667",
+      "278152",
+      "269385",
+      "262593"
+    ]
+  },
+  "courses": {
+    "262593": {
+      "status": "done",
+      "startedAt": "2025-11-03T15:51:06.700Z",
+      "finishedAt": "2025-11-03T15:51:36.092Z",
+      "lastUpdated": "2025-11-03T15:51:36.092Z",
+      "error": null
+    },
+    "269385": {
+      "status": "done",
+      "startedAt": "2025-11-03T15:43:08.975Z",
+      "finishedAt": "2025-11-03T15:51:06.687Z",
+      "lastUpdated": "2025-11-03T15:51:06.687Z",
+      "error": null
+    },
+    "271667": {
+      "status": "done",
+      "startedAt": "2025-11-03T15:28:39.660Z",
+      "finishedAt": "2025-11-03T15:39:11.998Z",
+      "lastUpdated": "2025-11-03T15:39:11.998Z",
+      "error": null
+    },
+    "274131": {
+      "status": "done",
+      "startedAt": "2025-11-03T15:01:39.696Z",
+      "finishedAt": "2025-11-03T15:07:37.976Z",
+      "lastUpdated": "2025-11-03T15:07:37.976Z",
+      "error": null
+    },
+    "274556": {
+      "status": "done",
+      "startedAt": "2025-11-03T15:21:37.012Z",
+      "finishedAt": "2025-11-03T15:28:39.655Z",
+      "lastUpdated": "2025-11-03T15:28:39.655Z",
+      "error": null
+    },
+    "278141": {
+      "status": "done",
+      "startedAt": "2025-11-03T15:07:37.994Z",
+      "finishedAt": "2025-11-03T15:14:18.535Z",
+      "lastUpdated": "2025-11-03T15:14:18.535Z",
+      "error": null
+    },
+    "278152": {
+      "status": "done",
+      "startedAt": "2025-11-03T15:39:12.018Z",
+      "finishedAt": "2025-11-03T15:43:08.958Z",
+      "lastUpdated": "2025-11-03T15:43:08.958Z",
+      "error": null
+    },
+    "293305": {
+      "status": "done",
+      "startedAt": "2025-11-03T15:14:18.560Z",
+      "finishedAt": "2025-11-03T15:21:36.994Z",
+      "lastUpdated": "2025-11-03T15:21:36.994Z",
+      "error": null
+    }
+  },
+  "failedPages": [],
+  "panoptoNoGuidPages": [
+    {
+      "url": "clinical-trauma-management-managing-breathing",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:15:33.962Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "clinical-trauma-management-managing-the-circulation",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:15:50.532Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "topics-endocrine",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:17:10.164Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "topics-gastrointestinal-tract",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:17:18.042Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "topics-medicine",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:17:25.111Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "topics-neurology",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:17:29.090Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "topics-professional-activity",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:17:36.580Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "topics-radiology",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:17:45.678Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "topics-renal-failure",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:17:50.015Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "topics-vascular",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:18:18.325Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "14-dot-2-25-omfs-mr-m-garg",
+      "reason": "no_guid_after_attempts",
+      "attempts": 5,
+      "finalReloadAttempted": true,
+      "recordedAt": "2025-11-03T15:19:25.886Z",
+      "courseId": "293305"
+    },
+    {
+      "url": "talks-and-q-and-a-sessions-with-ebm-tutors-3",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:28:27.667Z",
+      "courseId": "274556"
+    },
+    {
+      "url": "workshop-1-critical-appraisal-of-rct",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T15:28:32.507Z",
+      "courseId": "274556"
+    }
+  ],
+  "summary": {
+    "pagesFailed": 0,
+    "failedPagesCount": 0,
+    "finishedAt": "2025-11-03T15:51:36.104Z"
+  }
+}

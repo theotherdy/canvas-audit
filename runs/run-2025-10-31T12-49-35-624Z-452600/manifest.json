@@ -1,0 +1,66 @@
+{
+  "runId": "run-2025-10-31T12-49-35-624Z-452600",
+  "startedAt": "2025-10-31T12:49:35.627Z",
+  "config": {
+    "courses": [
+      "275255",
+      "275246",
+      "275247"
+    ]
+  },
+  "courses": {
+    "275246": {
+      "status": "done",
+      "startedAt": "2025-10-31T13:14:09.753Z",
+      "finishedAt": "2025-10-31T13:18:19.842Z",
+      "lastUpdated": "2025-10-31T13:18:19.842Z",
+      "error": null
+    },
+    "275247": {
+      "status": "done",
+      "startedAt": "2025-10-31T13:18:19.847Z",
+      "finishedAt": "2025-10-31T13:19:35.204Z",
+      "lastUpdated": "2025-10-31T13:19:35.204Z",
+      "error": null
+    },
+    "275255": {
+      "status": "done",
+      "startedAt": "2025-10-31T12:49:35.633Z",
+      "finishedAt": "2025-10-31T13:14:09.750Z",
+      "lastUpdated": "2025-10-31T13:14:09.750Z",
+      "error": null
+    }
+  },
+  "failedPages": [],
+  "panoptoNoGuidPages": [
+    {
+      "url": "cerebellum-and-basal-ganglia",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T12:53:15.340Z",
+      "courseId": "275255"
+    },
+    {
+      "url": "intro-to-week-5-cal-somatosensory-and-pain-pathways-from-the-body-and-face",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T13:05:59.557Z",
+      "courseId": "275255"
+    },
+    {
+      "url": "vestibular-practical",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T13:13:02.915Z",
+      "courseId": "275255"
+    }
+  ],
+  "summary": {
+    "pagesFailed": 0,
+    "failedPagesCount": 0,
+    "finishedAt": "2025-10-31T13:19:35.206Z"
+  }
+}

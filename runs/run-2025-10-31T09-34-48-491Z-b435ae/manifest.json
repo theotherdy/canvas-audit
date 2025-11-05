@@ -1,6 +1,6 @@
 {
-  "runId": "run-2025-10-31T09-13-45-908Z-e03c9c",
-  "startedAt": "2025-10-31T09:13:45.910Z",
+  "runId": "run-2025-10-31T09-34-48-491Z-b435ae",
+  "startedAt": "2025-10-31T09:34:48.493Z",
   "config": {
     "courses": [
       "275251"
@@ -9,9 +9,9 @@
   "courses": {
     "275251": {
       "status": "done",
-      "startedAt": "2025-10-31T09:13:45.917Z",
-      "finishedAt": "2025-10-31T09:26:09.110Z",
-      "lastUpdated": "2025-10-31T09:26:09.110Z",
+      "startedAt": "2025-10-31T09:34:48.499Z",
+      "finishedAt": "2025-10-31T09:46:49.488Z",
+      "lastUpdated": "2025-10-31T09:46:49.488Z",
       "error": null
     }
   },
@@ -22,7 +22,7 @@
       "reason": "panopto_deleted",
       "attempts": 1,
       "reloaded": false,
-      "detectedAt": "2025-10-31T09:19:44.326Z",
+      "detectedAt": "2025-10-31T09:40:20.323Z",
       "courseId": "275251"
     },
     {
@@ -30,7 +30,7 @@
       "reason": "panopto_deleted",
       "attempts": 1,
       "reloaded": false,
-      "detectedAt": "2025-10-31T09:19:47.975Z",
+      "detectedAt": "2025-10-31T09:40:24.026Z",
       "courseId": "275251"
     },
     {
@@ -38,7 +38,7 @@
       "reason": "panopto_deleted",
       "attempts": 1,
       "reloaded": false,
-      "detectedAt": "2025-10-31T09:19:51.599Z",
+      "detectedAt": "2025-10-31T09:40:27.709Z",
       "courseId": "275251"
     },
     {
@@ -46,7 +46,7 @@
       "reason": "panopto_deleted",
       "attempts": 1,
       "reloaded": false,
-      "detectedAt": "2025-10-31T09:20:46.556Z",
+      "detectedAt": "2025-10-31T09:41:23.271Z",
       "courseId": "275251"
     },
     {
@@ -54,7 +54,7 @@
       "reason": "panopto_deleted",
       "attempts": 1,
       "reloaded": false,
-      "detectedAt": "2025-10-31T09:21:36.542Z",
+      "detectedAt": "2025-10-31T09:42:13.321Z",
       "courseId": "275251"
     },
     {
@@ -62,7 +62,7 @@
       "reason": "panopto_deleted",
       "attempts": 1,
       "reloaded": false,
-      "detectedAt": "2025-10-31T09:21:40.151Z",
+      "detectedAt": "2025-10-31T09:42:16.953Z",
       "courseId": "275251"
     },
     {
@@ -70,13 +70,13 @@
       "reason": "panopto_deleted",
       "attempts": 1,
       "reloaded": false,
-      "detectedAt": "2025-10-31T09:24:01.986Z",
+      "detectedAt": "2025-10-31T09:44:38.991Z",
       "courseId": "275251"
     }
   ],
   "summary": {
     "pagesFailed": 0,
     "failedPagesCount": 0,
-    "finishedAt": "2025-10-31T09:26:09.112Z"
+    "finishedAt": "2025-10-31T09:46:49.491Z"
   }
 }

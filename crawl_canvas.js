@@ -487,7 +487,9 @@ for (const courseId of COURSES) {
           const msFormsMatches = [...html.matchAll(msFormsRegex)];
           const msFormsCount = msFormsMatches.length;
           // Count CSlide iframes // <-- ADD THIS BLOCK
-          const cslideRegex = /<iframe[^>]*src="[^"]*learntech\.medsci\.ox\.ac\.uk\/cslide\/[^"]*"/ig;
+          //const cslideRegex = /<iframe[^>]*src="[^"]*learntech\.medsci\.ox\.ac\.uk\/cslide\/[^"]*"/ig;
+          // Match any iframe whose src includes "cslide" (case-insensitive)
+          const cslideRegex = /<iframe[^>]*src=["'][^"']*cslide[^"']*["']/ig;
           const cslideMatches = [...html.matchAll(cslideRegex)];
           const cslideCount = cslideMatches.length;
 

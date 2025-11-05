@@ -1,0 +1,298 @@
+{
+  "runId": "run-2025-11-03T15-56-33-012Z-386f35",
+  "startedAt": "2025-11-03T15:56:33.016Z",
+  "config": {
+    "courses": [
+      "262592",
+      "262591",
+      "262594",
+      "218650",
+      "262597",
+      "262596",
+      "262595",
+      "195626",
+      "190726"
+    ]
+  },
+  "courses": {
+    "190726": {
+      "status": "done",
+      "startedAt": "2025-11-03T16:59:53.500Z",
+      "finishedAt": "2025-11-03T17:12:24.930Z",
+      "lastUpdated": "2025-11-03T17:12:24.930Z",
+      "error": null
+    },
+    "195626": {
+      "status": "done",
+      "startedAt": "2025-11-03T16:56:14.739Z",
+      "finishedAt": "2025-11-03T16:59:53.474Z",
+      "lastUpdated": "2025-11-03T16:59:53.474Z",
+      "error": null
+    },
+    "218650": {
+      "status": "done",
+      "startedAt": "2025-11-03T16:30:38.150Z",
+      "finishedAt": "2025-11-03T16:37:06.138Z",
+      "lastUpdated": "2025-11-03T16:37:06.138Z",
+      "error": null
+    },
+    "262591": {
+      "status": "done",
+      "startedAt": "2025-11-03T16:04:41.283Z",
+      "finishedAt": "2025-11-03T16:09:45.207Z",
+      "lastUpdated": "2025-11-03T16:09:45.207Z",
+      "error": null
+    },
+    "262592": {
+      "status": "done",
+      "startedAt": "2025-11-03T15:56:33.029Z",
+      "finishedAt": "2025-11-03T16:04:41.269Z",
+      "lastUpdated": "2025-11-03T16:04:41.269Z",
+      "error": null
+    },
+    "262594": {
+      "status": "done",
+      "startedAt": "2025-11-03T16:09:45.224Z",
+      "finishedAt": "2025-11-03T16:30:38.124Z",
+      "lastUpdated": "2025-11-03T16:30:38.124Z",
+      "error": null
+    },
+    "262595": {
+      "status": "done",
+      "startedAt": "2025-11-03T16:52:16.577Z",
+      "finishedAt": "2025-11-03T16:56:14.721Z",
+      "lastUpdated": "2025-11-03T16:56:14.721Z",
+      "error": null
+    },
+    "262596": {
+      "status": "done",
+      "startedAt": "2025-11-03T16:44:17.326Z",
+      "finishedAt": "2025-11-03T16:52:16.566Z",
+      "lastUpdated": "2025-11-03T16:52:16.566Z",
+      "error": null
+    },
+    "262597": {
+      "status": "done",
+      "startedAt": "2025-11-03T16:37:06.148Z",
+      "finishedAt": "2025-11-03T16:44:17.312Z",
+      "lastUpdated": "2025-11-03T16:44:17.312Z",
+      "error": null
+    }
+  },
+  "failedPages": [],
+  "panoptoNoGuidPages": [
+    {
+      "url": "complex-emotional-needs",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:07:20.043Z",
+      "courseId": "262591"
+    },
+    {
+      "url": "optional-recorded-lecture-health-protection",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:34:00.050Z",
+      "courseId": "218650"
+    },
+    {
+      "url": "breaking-bad-news-lecture-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:45:10.339Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "bronchiolitis-video",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:45:19.222Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "cardiology-lecture-recordings",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:45:24.129Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "childhood-cancer-lecture-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:45:54.215Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "dermatology-lecture-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:46:20.799Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "diabetes-lecture-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:46:36.740Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "faltering-growth-lecture-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:47:09.908Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "gastroenterology-lecture-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:47:24.579Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "genetics-seminar-recordings",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:47:35.843Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "haematology-lecture-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:47:48.101Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "inhalers-video",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:48:06.543Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "neurology-lecture-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:48:36.319Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "renal-disease-lecture-recording",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T16:50:13.727Z",
+      "courseId": "262596"
+    },
+    {
+      "url": "topics-renal-failure",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:00:48.076Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "topics-medicine",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:00:57.754Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "topics-neurology",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:01:35.607Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "clinical-trauma-management-managing-the-circulation",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:02:13.990Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "clinical-trauma-management-managing-breathing",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:02:18.380Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "topics-vascular",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:02:23.698Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "topics-gastrointestinal-tract",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:02:30.890Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "topics-radiology",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:03:09.194Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "topics-endocrine",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:03:30.773Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "topics-professional-activity",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:03:53.255Z",
+      "courseId": "190726"
+    },
+    {
+      "url": "vascular-miss-m-nortley",
+      "reason": "panopto_deleted",
+      "attempts": 2,
+      "reloaded": false,
+      "detectedAt": "2025-11-03T17:04:58.493Z",
+      "courseId": "190726"
+    }
+  ],
+  "summary": {
+    "pagesFailed": 0,
+    "failedPagesCount": 0,
+    "finishedAt": "2025-11-03T17:12:24.944Z"
+  }
+}

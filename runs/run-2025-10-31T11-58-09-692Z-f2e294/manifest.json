@@ -1,0 +1,74 @@
+{
+  "runId": "run-2025-10-31T11-58-09-692Z-f2e294",
+  "startedAt": "2025-10-31T11:58:09.695Z",
+  "config": {
+    "courses": [
+      "275249",
+      "274796",
+      "275250"
+    ]
+  },
+  "courses": {
+    "274796": {
+      "status": "done",
+      "startedAt": "2025-10-31T11:59:58.010Z",
+      "finishedAt": "2025-10-31T12:03:05.906Z",
+      "lastUpdated": "2025-10-31T12:03:05.906Z",
+      "error": null
+    },
+    "275249": {
+      "status": "done",
+      "startedAt": "2025-10-31T11:58:09.700Z",
+      "finishedAt": "2025-10-31T11:59:58.006Z",
+      "lastUpdated": "2025-10-31T11:59:58.006Z",
+      "error": null
+    },
+    "275250": {
+      "status": "done",
+      "startedAt": "2025-10-31T12:03:05.908Z",
+      "finishedAt": "2025-10-31T12:06:17.635Z",
+      "lastUpdated": "2025-10-31T12:06:17.635Z",
+      "error": null
+    }
+  },
+  "failedPages": [],
+  "panoptoNoGuidPages": [
+    {
+      "url": "pharm-pract-anaphylaxis-week-5",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T12:05:03.644Z",
+      "courseId": "275250"
+    },
+    {
+      "url": "pharm-pract-anaphylaxis-week-6",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T12:05:07.225Z",
+      "courseId": "275250"
+    },
+    {
+      "url": "regulation-of-calcium-2",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T12:05:38.482Z",
+      "courseId": "275250"
+    },
+    {
+      "url": "your-electronic-lab-book",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T12:06:09.195Z",
+      "courseId": "275250"
+    }
+  ],
+  "summary": {
+    "pagesFailed": 0,
+    "failedPagesCount": 0,
+    "finishedAt": "2025-10-31T12:06:17.637Z"
+  }
+}

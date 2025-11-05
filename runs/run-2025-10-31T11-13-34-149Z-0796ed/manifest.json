@@ -1,0 +1,90 @@
+{
+  "runId": "run-2025-10-31T11-13-34-149Z-0796ed",
+  "startedAt": "2025-10-31T11:13:34.152Z",
+  "config": {
+    "courses": [
+      "275252",
+      "275254",
+      "275253"
+    ]
+  },
+  "courses": {
+    "275252": {
+      "status": "done",
+      "startedAt": "2025-10-31T11:13:34.159Z",
+      "finishedAt": "2025-10-31T11:21:20.532Z",
+      "lastUpdated": "2025-10-31T11:21:20.532Z",
+      "error": null
+    },
+    "275253": {
+      "status": "done",
+      "startedAt": "2025-10-31T11:26:00.953Z",
+      "finishedAt": "2025-10-31T11:26:58.485Z",
+      "lastUpdated": "2025-10-31T11:26:58.485Z",
+      "error": null
+    },
+    "275254": {
+      "status": "done",
+      "startedAt": "2025-10-31T11:21:20.535Z",
+      "finishedAt": "2025-10-31T11:26:00.950Z",
+      "lastUpdated": "2025-10-31T11:26:00.950Z",
+      "error": null
+    }
+  },
+  "failedPages": [],
+  "panoptoNoGuidPages": [
+    {
+      "url": "e-ecg-workshop-groups-c-and-d-only-in-week-4",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T11:18:03.126Z",
+      "courseId": "275252"
+    },
+    {
+      "url": "e-ecg-workshop-groups-e-and-f-only-in-week-5",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T11:18:06.792Z",
+      "courseId": "275252"
+    },
+    {
+      "url": "e-ecg-workshop-groups-g-and-h-only-in-week-6",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T11:18:10.526Z",
+      "courseId": "275252"
+    },
+    {
+      "url": "isolated-heart",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T11:19:30.381Z",
+      "courseId": "275252"
+    },
+    {
+      "url": "neuromuscular-transmission-groups-d-and-f",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T11:20:12.814Z",
+      "courseId": "275252"
+    },
+    {
+      "url": "pcr-practical-introduction",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-10-31T11:25:19.019Z",
+      "courseId": "275254"
+    }
+  ],
+  "summary": {
+    "pagesFailed": 0,
+    "failedPagesCount": 0,
+    "finishedAt": "2025-10-31T11:26:58.487Z"
+  }
+}

@@ -92,25 +92,68 @@
   const jobs  = rows.map(([courseId, sessionId]) => ({ courseId, sessionId }));
 
   /* ── 1. Helper – fetch all pages (pageNumber) ─────────────  */
+  // viewers: fetch pages, show raw response, filter by LastViewedDateTime client-side
   async function viewers(sessionId, startIso, endIso) {
     const pageSize = 100;
-    let page = 0, out = [];
+    let page = 0;
+    let out = [];
 
-    // encode the dates so they can safely go in a URL
+    // parsed Date objects for comparisons
+    const startMs = new Date(startIso).getTime();
+    const endMs   = new Date(endIso).getTime();
+
     const s = encodeURIComponent(startIso);
     const e = encodeURIComponent(endIso);
 
+    console.log(`📡 Fetching viewers for ${sessionId}`);
+    console.log(`   → startDate param: ${s}`);
+    console.log(`   → endDate param:   ${e}`);
+    console.log(`   → startMs: ${startMs}, endMs: ${endMs}`);
+
     while (true) {
-      const r = await fetch(
-        `/Panopto/api/v1/sessions/${sessionId}/viewers?pageNumber=${page}&pageSize=${pageSize}&startDate=${s}&endDate=${e}`,
-        { credentials:'include' });
+      const url = `/Panopto/api/v1/sessions/${sessionId}/viewers?pageNumber=${page}&pageSize=${pageSize}&startDate=${s}&endDate=${e}`;
+      console.log(`   🔗 Requesting page ${page}:`, url);
+
+      const r = await fetch(url, { credentials: 'include' });
       if (!r.ok) {
-        throw new Error(`Panopto viewers fetch failed: ${r.status} ${r.statusText}`);
+        console.error(`   ⚠️ Fetch failed (${r.status} ${r.statusText})`);
+        throw new Error(`Panopto viewers fetch failed: ${r.status}`);
       }
-      const b = await r.json();
-      const chunk = Array.isArray(b) ? b : b.Results ?? [];
-      out = out.concat(chunk);
-      if (chunk.length < pageSize) return out;
+
+      const body = await r.json();
+
+      // full raw response preview (truncated to avoid console floods)
+      const jsonPreview = JSON.stringify(body, null, 2);
+      //console.log(`   🧾 RAW response (page ${page}; ${jsonPreview.length} chars):`);
+      /*if (jsonPreview.length > 6000) {
+        console.log(jsonPreview.slice(0, 6000) + '\n... [truncated]');
+      } else {
+        console.log(jsonPreview);
+      }*/
+
+      // Normalize to the array of rows (some APIs return { Results: [...] })
+      const chunk = Array.isArray(body) ? body : (body.Results ?? []);
+      console.log(`   ℹ️ Server returned ${chunk.length} rows on page ${page}`);
+
+      // Filter client-side by LastViewedDateTime (if present)
+      const beforeFilterCount = chunk.length;
+      const kept = chunk.filter(x => {
+        if (!x.LastViewedDateTime) return false; // no timestamp => exclude
+        const t = new Date(x.LastViewedDateTime).getTime();
+        // inclusive range: start <= t <= end
+        return t >= startMs && t <= endMs;
+      });
+      console.log(`   🔍 After client filter: ${kept.length} / ${beforeFilterCount} rows kept (page ${page})`);
+
+      out = out.concat(kept);
+
+      // If server returned fewer than pageSize we have no more pages to ask for.
+      if (chunk.length < pageSize) {
+        console.log(`   ⏹ No more pages from server; total filtered rows for ${sessionId}: ${out.length}`);
+        return out;
+      }
+
+      // Otherwise, move to the next page and continue
       page += 1;
     }
   }

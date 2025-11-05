@@ -1,0 +1,66 @@
+{
+  "runId": "run-2025-11-04T15-36-43-841Z-21646e",
+  "startedAt": "2025-11-04T15:36:43.849Z",
+  "config": {
+    "courses": [
+      "273659",
+      "273658",
+      "273655",
+      "273657",
+      "273654"
+    ]
+  },
+  "courses": {
+    "273654": {
+      "status": "done",
+      "startedAt": "2025-11-04T15:57:17.696Z",
+      "finishedAt": "2025-11-04T16:00:01.675Z",
+      "lastUpdated": "2025-11-04T16:00:01.675Z",
+      "error": null
+    },
+    "273655": {
+      "status": "done",
+      "startedAt": "2025-11-04T15:43:06.903Z",
+      "finishedAt": "2025-11-04T15:55:08.943Z",
+      "lastUpdated": "2025-11-04T15:55:08.943Z",
+      "error": null
+    },
+    "273657": {
+      "status": "done",
+      "startedAt": "2025-11-04T15:55:08.962Z",
+      "finishedAt": "2025-11-04T15:57:17.680Z",
+      "lastUpdated": "2025-11-04T15:57:17.680Z",
+      "error": null
+    },
+    "273658": {
+      "status": "done",
+      "startedAt": "2025-11-04T15:40:54.310Z",
+      "finishedAt": "2025-11-04T15:43:06.871Z",
+      "lastUpdated": "2025-11-04T15:43:06.871Z",
+      "error": null
+    },
+    "273659": {
+      "status": "done",
+      "startedAt": "2025-11-04T15:36:43.869Z",
+      "finishedAt": "2025-11-04T15:40:53.972Z",
+      "lastUpdated": "2025-11-04T15:40:53.972Z",
+      "error": null
+    }
+  },
+  "failedPages": [],
+  "panoptoNoGuidPages": [
+    {
+      "url": "basal-ganglia-lecture",
+      "reason": "panopto_deleted",
+      "attempts": 1,
+      "reloaded": false,
+      "detectedAt": "2025-11-04T15:57:35.251Z",
+      "courseId": "273654"
+    }
+  ],
+  "summary": {
+    "pagesFailed": 0,
+    "failedPagesCount": 0,
+    "finishedAt": "2025-11-04T16:00:01.713Z"
+  }
+}
