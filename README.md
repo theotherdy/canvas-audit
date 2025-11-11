@@ -22,7 +22,7 @@ so the cookies cover both domains. Close the window; cookies are saved to
 1. Open your Panopto instance (e.g https://abc.cloud.panopto.eu) and log in.
 2. Press F12 → Console.
 3. Change START_DATE_INPUT and END_DATE_INPUT (need to restrict by date otherwise returns _all_ data on the video
-4. Paste `crawl_panopto.js` and follow the prompt to choose apropriate `panopto_session_ids-*` file – it downloads `panopto_stats.csv`.
+4. Paste `crawl_panopto.js` and follow the prompt to choose apropriate `panopto_session_ids-*` file – it downloads `panopto_stats_*.csv`.
 
 ### Merge panopto data back into course data
 
